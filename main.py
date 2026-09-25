@@ -1,32 +1,19 @@
-import sqlite3
+import database as db
 
-#Property Management 
+database = db.connect_sqlite()
+cursor = db.cursor()
 
-class Database:
-    
-    def __init__(self):
-        pass
-    
-    def connect_sqlite(self):
-        pass
-    
-    def create_table(self):
-        pass
-    
-    def 
-
-
-    
-    conn = sqlite3.connect("property_management.db")
-
-try:
-    conn.cursor()
-    
-    cursor.execute("
+cursor.execute("""
+               CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY AUTOINCREMENET,
+                email = TEXT NOT NULL UNIQUE
+                create_at TEXT DEFAULT CURRENT_TIMESTAMP              
                    
-                   ")
-
-
+                   
+               )
+    
+               """)
+    
 
 
 
