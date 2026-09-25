@@ -1,12 +1,21 @@
 import sqlite3 
 import database as db
 
-try:
-    pass
-
-def schema():
+def create_schema():
     
-    Database = db.connect_sqlite()
-    cursor = Database.cursor()
+    database = db.connect_sqlite()
+    cursor = database.cursor()
     
-    cursor 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+    
+    database.commit()
+    database.close()
+    
+    
