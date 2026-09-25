@@ -4,14 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Property Manager Login</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{url_for('static', filename='styles.css') }}">
 </head>
 <body>
 
     <div class="login-container">
 
-        <h1>Property Manager</h1>
-        <p>Manage properties, maintenance tasks, and tenants.</p>
+        <h1>Property Management</h1>
 
         <form method="POST" action="/login">
 
@@ -28,6 +27,11 @@
                 placeholder="Password"
                 required
             >
+            <div class="signup-hyperlink">
+                <a href="signup.html"> 
+                    <button type="button"> Create Account </button> 
+                </a>
+            </div>
 
             <button type="submit">
                 Sign In

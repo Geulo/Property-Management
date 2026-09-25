@@ -19,8 +19,3 @@ class User:
         self.role = input("Email")
         
         pass
-    
-        def add_user(self, username, email, db = database, time = datetime):
-        self.username = username
-        self.email = email
-        self.created_at = 

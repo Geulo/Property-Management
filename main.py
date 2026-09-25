@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, render_template
 
 from src.database import Database
 
@@ -12,7 +12,7 @@ db = Database.connect_sqlite()
 
 @app.route("/")
 def home():
-    return "Hello"    
+    return render_template("login.html") 
 
 
 if __name__ == "__main__":
