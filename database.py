@@ -1,17 +1,22 @@
 import sqlite3
+from datetime import datetime, timezone
  
 DATABASE = "property_management.db"
 class Database:
     
-    def __init__(self, database):
-        self.database = self.connect_sqlite()
-        self.cursor = self.cursor()
+    def __init__(self, version, name):
+        self.version = version
+        self.name = name
     
-    def connect_sqlite(self):
-        return sqlite3.connect(DATABASE)
+    @staticmethod
+    def connect_sqlite():
+         if sqlite3.connect(DATABASE):
+             return print(f'db name: {DATABASE} connected at {datetime.now(timezone.utc).strftime("%H:%M:%S")}')
+        
 
-    def cursor(self):
-        return self.database.cursor()
+    @staticmethod
+    def cursor():
+        return sqlite3.Cursor(sqlite3.connect(DATABASE))
 
                     
     def create_table(self):
