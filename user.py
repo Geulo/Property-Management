@@ -11,6 +11,4 @@ class User:
         self.company = company 
         
     def add_user(self):
-        
-        
-    
+        pass

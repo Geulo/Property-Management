@@ -1,5 +1,4 @@
 from database import Database
-import time 
 
 VERSION = "0.0.1"
 NAME = "WoW"
@@ -10,6 +9,7 @@ db = Database.connect_sqlite()
 
 
 def user_table(db = Database):
+    
     cursor = db.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (

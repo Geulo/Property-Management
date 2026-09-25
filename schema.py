@@ -9,6 +9,4 @@ class Schema:
         self.date = date
         
     def schema_tables(self):
-        
-        if 
-        self.cursor 
+        pass
