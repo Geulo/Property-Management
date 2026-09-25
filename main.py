@@ -1,4 +1,4 @@
-from database import Database
+from src.database import Database
 
 VERSION = "0.0.1"
 NAME = "WoW"

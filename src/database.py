@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime, timezone
  
-DATABASE = "property_management.db"
+DATABASE = "data/property_management.db"
 class Database:
     
     def __init__(self, version, name):
