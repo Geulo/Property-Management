@@ -1,12 +1,12 @@
 import sqlite3 
 import database as db
 
-class Schema:
+try:
+    pass
+
+def schema():
     
-    def __init__(self, version, date, cursor = db):
-        self.cursor = cursor
-        self.version = version
-        self.date = date
-        
-    def schema_tables(self):
-        pass
+    Database = db.connect_sqlite()
+    cursor = Database.cursor()
+    
+    cursor 
