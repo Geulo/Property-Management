@@ -5,19 +5,19 @@ DB_PATH = "data/property_management.db"
 DB_NAME = "property_management.db"
 class Database:
     
-    def __init__(self, version, name):
-        self.version = version
-        self.name = name
+    def __init__(self):
+        self.conn = None
     
     @staticmethod
     def connect_sqlite():
-         if sqlite3.connect(DB_PATH):
-             return print(f'db name: {DB_NAME} connected at {datetime.now(timezone.utc).strftime("%H:%M:%S")}')
-        
-
-    @staticmethod
-    def cursor():
-        return sqlite3.Cursor(sqlite3.connect(DB_PATH))
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        print(f'db name: {DB_NAME} connected at {datetime.now(timezone.utc).strftime("%H:%M:%S")}')
+        return conn
+    
+    def close(self):
+        if self.conn:
+            self.conn.close()
 
                     
     def create_table(self):
