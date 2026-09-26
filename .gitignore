@@ -2,4 +2,4 @@ venv/
 __pycache__/
 *.pyc
 
-propert_managment.db
+data/propert_managment.db
