@@ -1,8 +1,10 @@
+import os
 import sqlite3
 from datetime import datetime, timezone
- 
-DB_PATH = "data/property_management.db"
+
+DB_PATH = os.path.join(os.environ.get("DATA_DIR", "data"), "property_management.db")
 DB_NAME = "property_management.db"
+
 class Database:
     
     def __init__(self):

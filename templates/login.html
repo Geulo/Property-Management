@@ -7,32 +7,31 @@
     <link rel="stylesheet" href="{{url_for('static', filename='styles.css') }}">
 </head>
 <body>
-
     <div class="login-container">
-    <h1>Property Management</h1>
-        <div class="input-container">
-            <form method="POST" action="/login">
-                <input
-                    type="email"
-                    name="email"
-                    placeholder="Email"
-                    required
-                >
-                <input
-                    type="password"
-                    name="password"
-                    placeholder="Password"
-                    required
-                >
+        <h1>Property Management</h1>
+        {% if error %}
+        <p class="error-message">{{ error }}</p>
+        {% endif %}
+        <form method="POST" action="/login">
+            <input
+                type="email"
+                name="email"
+                placeholder="Email"
+                required
+            >
+            <input
+                type="password"
+                name="password"
+                placeholder="Password"
+                required
+            >
             <div class="signup-hyperlink">
                 <a href="/signup">Create Account</a>
             </div>
-
             <button type="submit">
                 Sign In
             </button>
-            </form>
-        </div>
-
+        </form>
+    </div>
 </body>
 </html>

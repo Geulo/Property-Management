@@ -2,7 +2,7 @@ import sqlite3
 
 import bcrypt
 
-from database import Database
+from src.database import Database
 
 
 def create_schema():
