@@ -1,5 +1,5 @@
+import sqlite3  # noqa: I001
 import datetime
-import sqlite3
 
 from flask import Blueprint, redirect, render_template, request
 
@@ -27,7 +27,8 @@ def signup():
         )
         connection.commit()
         connection.close()
-        return redirect ("/signup.html")
+        print(f'user: {username} created at {datetime.time.fromisoformat}')
+        return redirect ("/login")
     
     except sqlite3.IntegrityError:    
         connection.close()
@@ -52,11 +53,14 @@ def signin():
         
         if user:
             if check_password(password, user["password_hash"]):
+                connection.close()
                 print(f'User {email} has logged in')
-                return redirect("/index")
+                return render_template("index.html")
             else:
+                connection.close()
                 return render_template("login.html", error="Invalid email or pasword...")
         else:
+            connection.close()
             return render_template("login.html", error="Invalid email or pasword...")
         
     except sqlite3.IntegrityError:

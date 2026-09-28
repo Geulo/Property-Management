@@ -7,6 +7,16 @@
     <link rel="stylesheet" href="{{url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <div class="centered-div">Welcome</div>
+    <div class="add-property-popup" onclick="myFunction()">Add a Property
+        <span class="add-property-popuptext" id="myPopup">
+        </span>
+    </div>
+
+    <script>
+        // When the user clicks on <div>, open the popup
+        function myFunction() {
+        var popup = document.getElementById("myPopup");
+        popup.classList.toggle("show");}
+    </script>
 </body>
 </html>
