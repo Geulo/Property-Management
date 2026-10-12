@@ -3,20 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Property Manager Homepage</title>
-    <link rel="stylesheet" href="{{url_for('static', filename='styles.css') }}">
+    <title>My Properties</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body>
-    <div class="add-property-popup" onclick="myFunction()">Add a Property
-        <span class="add-property-popuptext" id="myPopup">
-        </span>
+<body class="page">
+    <header class="top-bar">
+        <h1>My Properties</h1>
+        <a href="/logout">Log out</a>
+    </header>
+
+    {% if error %}
+    <p class="error-message">{{ error }}</p>
+    {% endif %}
+
+    <div class="grid-container">
+        {% for property in properties %}
+            <a href="{{ url_for('task_bp.property_tasks', property_id=property['property_id']) }}" class="card-link">
+                <div class="property-card">
+                    <div class="info-pad">
+                        <h3 class="name">{{ property['property_name'] }}</h3>
+                        <p class="address">{{ property['address'] }}</p>
+                    </div>
+                </div>
+            </a>
+        {% else %}
+            <!-- shown when the user has no properties yet -->
+            <p>You haven't added any properties yet. Add your first one below.</p>
+        {% endfor %}
     </div>
 
-    <script>
-        // When the user clicks on <div>, open the popup
-        function myFunction() {
-        var popup = document.getElementById("myPopup");
-        popup.classList.toggle("show");}
-    </script>
+    <section class="panel">
+        <h3>Add a Property</h3>
+        <form method="POST" action="/properties">
+            <input type="text" name="property_name" placeholder="Property Name" maxlength="50" required>
+            <input type="text" name="address" placeholder="Address" required>
+            <button type="submit">Add Property</button>
+        </form>
+    </section>
 </body>
 </html>

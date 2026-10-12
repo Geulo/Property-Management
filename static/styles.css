@@ -29,44 +29,24 @@ body {
     width: 320px;
 }
 
-.add-property-popup{
-  position: relative;
-  display: inline-block;
-  cursor: pointer;
-}
-.add-property-popup .add-property-popuptext{
-  visibility: hidden;
-  width: 160px;
-  background-color: #555;
-  color: #fff;
-  text-align: center;
-  border-radius: 6px;
-  padding: 8px 0;
-  position: absolute;
-  z-index: 1;
-  bottom: 125%;
-  left: 50%;
-  margin-left: -80px;
-}
 
-/* Popup arrow */
-.add-property-popup .add-property-popuptext::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  margin-left: -5px;
-  border-width: 5px;
-  border-style: solid;
-  border-color: #555 transparent transparent transparent;
+.grid-container { 
+    display: flex; 
+    flex-direction: column; 
+    align-items: flex-start; 
+    justify-content: center;
+    gap: 20px;
+    padding: 20px; 
+    max-width: 600px;
+    margin-left: 50px;
+    font-family: sans-serif; 
 }
-
-/* Toggle this class when clicking on the popup container (hide and show the popup) */
-.add-property-popup .show {
-  visibility: visible;
-  -webkit-animation: fadeIn 1s;
-  animation: fadeIn 1s
+.card-link { text-decoration: none; color: inherit; }
+.property-card { 
+    width: 300px; border: 1px solid #e2e8f0; border-radius: 12px; 
+    overflow: hidden; background: #ffffff; transition: 0.2s; 
 }
+.property-card:hover { transform: scale(1.02); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
 
 h1 {
     margin-bottom: 10px;
@@ -100,3 +80,64 @@ button {
 button:hover {
     background-color: #1d4ed8;
 }
+/* app pages (not the centered login card) */
+body.page {
+    display: block;
+    height: auto;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.panel {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.grid-container { margin-left: 0; padding: 0 0 20px 0; }
+
+.error-message { color: #b91c1c; }
+
+.summary { margin-bottom: 15px; }
+.urgent { color: #b91c1c; }
+
+select {
+    width: 100%;
+    padding: 11px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+}
+
+.task {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+.task.status-done strong { text-decoration: line-through; color: #6b7280; }
+.task .description { margin: 4px 0 0 0; }
+.task-actions { display: flex; gap: 6px; align-items: flex-start; }
+
+.tag {
+    font-size: 0.75rem;
+    background: #e2e8f0;
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+.priority-urgent { background: #fee2e2; color: #b91c1c; }
+.priority-low { background: #f1f5f9; }
+
+button.small { width: auto; padding: 6px 10px; font-size: 0.8rem; }
+button.danger { background-color: #dc2626; }
+button.danger:hover { background-color: #b91c1c; }
