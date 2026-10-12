@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ property['property_name'] }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="page">
+    <header class="top-bar">
+        <a href="/">&larr; All properties</a>
+        <a href="/logout">Log out</a>
+    </header>
+
+    <h1>{{ property['property_name'] }}</h1>
+    <p class="address">{{ property['address'] }}</p>
+
+    <p class="summary">
+        {{ summary['pending'] }} pending &middot;
+        {{ summary['in_progress'] }} in progress &middot;
+        {{ summary['done'] }} done
+        {% if summary['urgent_open'] %}
+        &middot; <strong class="urgent">{{ summary['urgent_open'] }} urgent open</strong>
+        {% endif %}
+    </p>
+
+    {% if error %}
+    <p class="error-message">{{ error }}</p>
+    {% endif %}
+
+    <section class="panel">
+        <h3>Maintenance Tasks</h3>
+        {% for task in tasks %}
+        <div class="task status-{{ task['status'] }}">
+            <div>
+                <strong>{{ task['task_name'] }}</strong>
+                <span class="tag priority-{{ task['priority'] }}">{{ task['priority'] }}</span>
+                <span class="tag">{{ task['status'].replace('_', ' ') }}</span>
+                {% if task['description'] %}<p class="description">{{ task['description'] }}</p>{% endif %}
+            </div>
+            <div class="task-actions">
+                {% for next_status in transitions[task['status']] %}
+                <form method="POST" action="/properties/{{ property['property_id'] }}/tasks/{{ task['task_id'] }}/status">
+                    <input type="hidden" name="status" value="{{ next_status }}">
+                    <button type="submit" class="small">{{ next_status.replace('_', ' ') }}</button>
+                </form>
+                {% endfor %}
+                <form method="POST" action="/properties/{{ property['property_id'] }}/tasks/{{ task['task_id'] }}/delete">
+                    <button type="submit" class="small danger">delete</button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <p>No tasks for this property yet.</p>
+        {% endfor %}
+    </section>
+
+    <section class="panel">
+        <h3>Add a Task</h3>
+        <form method="POST" action="/properties/{{ property['property_id'] }}/tasks">
+            <input type="text" name="task_name" placeholder="e.g. Fix leaking tap" maxlength="80" required>
+            <input type="text" name="description" placeholder="Details (optional)">
+            <select name="priority">
+                {% for priority in priorities %}
+                <option value="{{ priority }}" {% if priority == 'normal' %}selected{% endif %}>{{ priority }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">Add Task</button>
+        </form>
+    </section>
+
+    <form method="POST" action="/properties/{{ property['property_id'] }}/delete"
+          onsubmit="return confirm('Delete this property and all its tasks?')">
+        <button type="submit" class="danger">Delete property</button>
+    </form>
+</body>
+</html>
