@@ -37,6 +37,9 @@ python main.py
 
 Then open http://localhost:5000, create an account and log in.
 
+On macOS, port 5000 is often taken by AirPlay Receiver. If so, run `PORT=5001 python main.py`
+and open http://localhost:5001 instead.
+
 The database and its tables are created automatically on first start. There is no
 migration or setup step.
 
