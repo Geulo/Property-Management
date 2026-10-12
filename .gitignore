@@ -1,5 +1,9 @@
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.coverage
+.DS_Store
 
-data/propert_managment.db
+# runtime sqlite database, created on startup
+data/
