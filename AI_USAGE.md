@@ -6,7 +6,7 @@ Two tools were used:
   exported chat transcript, which has a timestamp on every prompt (times below are local,
   UTC+2). Prompts are quoted from the transcript, typos included. The export also has
   chats for another course, so it is not in the repo; I can show it on request.
-- **Claude Code (Claude Opus 5.5)** (12 Oct). Rows 11-17 were logged during that session.
+- **Claude Code (Claude Opus 5.5)** (12-13 Oct). Rows 11-18 were logged during those sessions.
 
 | # | Date/commit | Tool | Prompt | Disposition | What changed & why (if modified) | In my own words, how this works |
 |---|---|---|---|---|---|---|
