@@ -43,6 +43,49 @@ and open http://localhost:5001 instead.
 The database and its tables are created automatically on first start. There is no
 migration or setup step.
 
+## Run with Docker
+
+The `Dockerfile` is the course template with its four TODOs filled in.
+
+```bash
+docker build -t property-management .
+docker run -p 8000:8000 -v pm-data:/data property-management
+```
+
+Then open http://localhost:8000. Inside the container `PORT=8000` and `DATA_DIR=/data`, so the
+database is at `/data/property_management.db` on the `pm-data` volume and survives the
+container being removed. Use another port with `-e PORT=9000 -p 9000:9000`.
+
+### Container contract check (§7 evidence)
+
+Output of `./container/run.sh` from the course repo, run against this repo on 2026-10-13:
+
+```
+=== SDD Assignment 1 contract check ===
+
+==> Repository shape
+  PASS  one Dockerfile, one manifest (requirements.txt)
+
+==> Build from a clean context, no build args
+  PASS  image built
+  PASS  image size 53 MB
+
+==> Start on PORT=8000 and reach it from the host
+  PASS  HTTP 302 from http://localhost:8000/
+
+==> SQLite file under DATA_DIR
+  PASS  found in /data: property_management.db
+
+==> Data persists, and a second boot does not re-seed
+  PASS  volume at /data persists
+  PASS  row counts unchanged across restart: properties=0 tasks=0 users=0
+
+==> PORT override is honoured (not hardcoded)
+  PASS  HTTP 302 from http://localhost:9123/
+
+=== ALL CHECKS PASSED ===
+```
+
 ## Configuration (environment variables)
 
 | Variable | Default | Purpose |
