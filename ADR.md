@@ -23,3 +23,19 @@ Context: My first schema put a `property_id` column on `users`, which only allow
 Decision: Three tables. `properties.user_id` references `users`, and `tasks.property_id` references `properties`, both `ON DELETE CASCADE`. Task `status` and `priority` are TEXT columns with `CHECK` constraints, and foreign keys are switched on per connection with `PRAGMA foreign_keys = ON`.
 Alternatives considered: Lookup tables for statuses and priorities: more joins for three fixed values that only change when the code changes. Deleting a property's tasks in Python code: easy to forget, and it would make the property module know about the tasks table.
 Consequences: A landlord can own many properties and each property many tasks, and deleting a property cleanly removes its tasks. Adding a new status means changing both the `CHECK` constraint and `STATUSES` in `task.py`, and SQLite can only change a `CHECK` by rebuilding the table.
+
+## 4. Test the logic layer directly against in-memory SQLite
+Date: 2026-10-12
+Status: Decided
+Context: The 70% coverage target is about core business logic, but my original route functions mixed SQL, validation and Flask `request`/`session` together, so they could only be tested through HTTP.
+Decision: Every domain has plain functions that take a `connection` as their first argument (`add_property`, `update_status`, `authenticate`...), and the routes are thin wrappers around them. Tests create a fresh `:memory:` database with `create_schema()` for every test (fixture in `tests/conftest.py`). On top of that there is one smoke-test file through Flask's test client.
+Alternatives considered: Testing only through the Flask test client: it also gets coverage, but a failing test then doesn't tell you whether the rule or the wiring is broken, and every test needs signup + login first. Mocking the database: hides real behaviour like the `UNIQUE` email constraint and `ON DELETE CASCADE`, which are exactly the rules I wanted to check.
+Consequences: I prioritised validation, ownership isolation (user A can't see or delete user B's property), cascade delete and the status transition table, which reached 99% of `src/`. Left thinner on purpose: the HTML templates (only checked for a few strings), bcrypt itself, and concurrent writes to SQLite.
+
+## 5. No roles for tenants or contractors
+Date: 2026-10-12
+Status: Decided
+Context: My early schema had `roles` and `credentials` tables so tenants could report issues and contractors could update tasks themselves.
+Decision: Only one kind of user, the landlord, who owns their properties and tasks. I removed the `roles` and `credentials` tables.
+Alternatives considered: Building the roles now: it needs a permission check on every route and an invite flow to link tenants to properties, roughly doubling the auth code for a user story my target user (one landlord with ~10 units) does not need yet.
+Consequences: Ownership is enforced by one rule, every query filters on `user_id`, which is simple to test. Adding tenants later means a new `memberships` table between users and properties, and changing that ownership check.
