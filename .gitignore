@@ -7,3 +7,6 @@ __pycache__/
 
 # runtime sqlite database, created on startup
 data/
+
+# local secrets for docker compose, never committed (see .env.example)
+.env

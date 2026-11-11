@@ -1,10 +1,13 @@
-from flask import Blueprint, abort, redirect, render_template, request, session
+from flask import Blueprint, g, jsonify, request
 
-from src.database import Database
+from src.auth import require_user
+from src.database import Database, execute, fetch_all, fetch_one
 
 property_bp = Blueprint("property_bp", __name__)
 
 MAX_NAME_LENGTH = 50
+
+COLUMNS = "property_id, property_name, address, user_id"
 
 
 # ---- logic (no Flask, takes a connection so it can be unit tested) ----
@@ -18,78 +21,89 @@ def add_property(connection, user_id, property_name, address):
     if len(property_name) > MAX_NAME_LENGTH:
         raise ValueError(f"Property name must be at most {MAX_NAME_LENGTH} characters")
 
-    cursor = connection.execute(
-        "INSERT INTO properties (property_name, address, user_id) VALUES (?, ?, ?)",
+    row = fetch_one(
+        connection,
+        "INSERT INTO properties (property_name, address, user_id) OUTPUT INSERTED.property_id "
+        "VALUES (%s, %s, %s)",
         (property_name, address, user_id),
     )
     connection.commit()
-    return cursor.lastrowid
+    return row["property_id"]
 
 
 def list_properties(connection, user_id):
-    return connection.execute(
-        "SELECT * FROM properties WHERE user_id = ? ORDER BY property_name", (user_id,)
-    ).fetchall()
+    return fetch_all(
+        connection,
+        f"SELECT {COLUMNS} FROM properties WHERE user_id = %s ORDER BY property_name",
+        (user_id,),
+    )
 
 
 def get_property(connection, property_id, user_id):
     # filtering on user_id means a user can never load someone else's property
-    return connection.execute(
-        "SELECT * FROM properties WHERE property_id = ? AND user_id = ?",
+    return fetch_one(
+        connection,
+        f"SELECT {COLUMNS} FROM properties WHERE property_id = %s AND user_id = %s",
         (property_id, user_id),
-    ).fetchone()
+    )
 
 
 def delete_property(connection, property_id, user_id):
-    cursor = connection.execute(
-        "DELETE FROM properties WHERE property_id = ? AND user_id = ?",
+    # the property's tasks live in the tasks service and are not deleted here (see README)
+    return execute(
+        connection,
+        "DELETE FROM properties WHERE property_id = %s AND user_id = %s",
         (property_id, user_id),
-    )
-    connection.commit()
-    return cursor.rowcount == 1
+    ) == 1
 
 
-# ---- routes ----
+# ---- routes (JSON for the static UI and the tasks service) ----
 
-@property_bp.before_request
-def require_login():
-    if "user_id" not in session:
-        return redirect("/login")
-
-
-@property_bp.route("/")
+@property_bp.route("/properties")
+@require_user
 def index():
-    connection = Database.connect_sqlite()
-    properties = list_properties(connection, session["user_id"])
+    connection = Database.connect()
+    properties = list_properties(connection, g.user_id)
     connection.close()
-    return render_template("index.html", properties=properties)
+    return jsonify(properties=properties)
 
 
 @property_bp.route("/properties", methods=["POST"])
+@require_user
 def create_property():
-    connection = Database.connect_sqlite()
+    body = request.get_json(silent=True) or {}
+    connection = Database.connect()
     try:
-        add_property(
-            connection,
-            session["user_id"],
-            request.form.get("property_name"),
-            request.form.get("address"),
-        )
+        property_id = add_property(connection, g.user_id, body.get("property_name"), body.get("address"))
+        created = get_property(connection, property_id, g.user_id)
     except ValueError as error:
-        properties = list_properties(connection, session["user_id"])
-        return render_template("index.html", properties=properties, error=str(error))
+        return jsonify(error=str(error)), 400
     finally:
         connection.close()
 
-    return redirect("/")
+    return jsonify(created), 201
 
 
-@property_bp.route("/properties/<int:property_id>/delete", methods=["POST"])
+# The endpoint the tasks service calls across the seam before it adds a task.
+@property_bp.route("/properties/<int:property_id>")
+@require_user
+def show_property(property_id):
+    connection = Database.connect()
+    found = get_property(connection, property_id, g.user_id)
+    connection.close()
+
+    if found is None:
+        return jsonify(error="Property not found"), 404
+    return jsonify(found)
+
+
+@property_bp.route("/properties/<int:property_id>", methods=["DELETE"])
+@require_user
 def remove_property(property_id):
-    connection = Database.connect_sqlite()
-    deleted = delete_property(connection, property_id, session["user_id"])
+    connection = Database.connect()
+    deleted = delete_property(connection, property_id, g.user_id)
     connection.close()
 
     if not deleted:
-        abort(404)
-    return redirect("/")
+        return jsonify(error="Property not found"), 404
+    return "", 204

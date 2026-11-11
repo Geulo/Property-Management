@@ -1,8 +1,8 @@
-import sqlite3
+import pymssql
+from flask import Blueprint, current_app, jsonify, request
 
-from flask import Blueprint, redirect, render_template, request, session
-
-from src.database import Database
+from src.auth import make_token
+from src.database import Database, fetch_one
 from src.util import check_password, hash_password
 
 user_bp = Blueprint("user", __name__)
@@ -22,68 +22,59 @@ def create_user(connection, username, email, password):
         raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
 
     try:
-        cursor = connection.execute(
-            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+        # OUTPUT INSERTED.<id> is SQL Server's way to hand back the new IDENTITY value
+        row = fetch_one(
+            connection,
+            "INSERT INTO users (username, email, password_hash) OUTPUT INSERTED.user_id "
+            "VALUES (%s, %s, %s)",
             (username, email, hash_password(password)),
         )
         connection.commit()
-    except sqlite3.IntegrityError:
+    except pymssql.IntegrityError:
+        connection.rollback()
         raise ValueError("Email already registered")
 
-    return cursor.lastrowid
+    return row["user_id"]
 
 
 def authenticate(connection, email, password):
     email = (email or "").strip().lower()
-    user = connection.execute(
-        "SELECT user_id, password_hash FROM users WHERE email = ?", (email,)
-    ).fetchone()
+    user = fetch_one(
+        connection,
+        "SELECT user_id, username, password_hash FROM users WHERE email = %s",
+        (email,),
+    )
 
     if user and check_password(password or "", user["password_hash"]):
-        return user["user_id"]
+        return user
     return None
 
 
-# ---- routes ----
+# ---- routes (JSON for the static UI) ----
 
-@user_bp.route("/signup", methods=["GET", "POST"])
+@user_bp.route("/signup", methods=["POST"])
 def signup():
-    if request.method == "GET":
-        return render_template("signup.html")
-
-    connection = Database.connect_sqlite()
+    body = request.get_json(silent=True) or {}
+    connection = Database.connect()
     try:
-        create_user(
-            connection,
-            request.form.get("username"),
-            request.form.get("email"),
-            request.form.get("password"),
-        )
+        user_id = create_user(connection, body.get("username"), body.get("email"), body.get("password"))
     except ValueError as error:
-        return render_template("signup.html", error=str(error))
+        return jsonify(error=str(error)), 400
     finally:
         connection.close()
 
-    return redirect("/login")
+    return jsonify(user_id=user_id), 201
 
 
-@user_bp.route("/login", methods=["GET", "POST"])
-def signin():
-    if request.method == "GET":
-        return render_template("login.html")
-
-    connection = Database.connect_sqlite()
-    user_id = authenticate(connection, request.form.get("email"), request.form.get("password"))
+@user_bp.route("/login", methods=["POST"])
+def login():
+    body = request.get_json(silent=True) or {}
+    connection = Database.connect()
+    user = authenticate(connection, body.get("email"), body.get("password"))
     connection.close()
 
-    if user_id is None:
-        return render_template("login.html", error="Invalid email or password")
+    if user is None:
+        return jsonify(error="Invalid email or password"), 401
 
-    session["user_id"] = user_id
-    return redirect("/")
-
-
-@user_bp.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/login")
+    token = make_token(current_app.config["SECRET_KEY"], user["user_id"])
+    return jsonify(token=token, user_id=user["user_id"], username=user["username"])

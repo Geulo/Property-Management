@@ -1,10 +1,10 @@
-from flask import Blueprint, abort, redirect, render_template, request, session
+from flask import Blueprint, g, jsonify, request
 
-from src.database import Database
+from src.auth import require_user
+from src.database import Database, execute, fetch_all, fetch_one
 
-# The ONLY import from the property domain. This is the seam: if tasks becomes its
-# own service, get_property() turns into an HTTP call to the property service.
-from src.property import get_property
+# The ONLY dependency on the property domain, now over HTTP instead of an import.
+from src.property_client import PropertyServiceUnavailable, fetch_property
 
 task_bp = Blueprint("task_bp", __name__)
 
@@ -20,10 +20,12 @@ ALLOWED_TRANSITIONS = {
 
 MAX_TASK_NAME_LENGTH = 80
 
+COLUMNS = "task_id, task_name, description, status, priority, property_id"
+
 
 # ---- logic (no Flask, takes a connection so it can be unit tested) ----
 
-def add_task(connection, property_id, task_name, description="", priority="normal"):
+def add_task(connection, user_id, property_id, task_name, description="", priority="normal"):
     task_name = (task_name or "").strip()
     description = (description or "").strip()
 
@@ -34,60 +36,62 @@ def add_task(connection, property_id, task_name, description="", priority="norma
     if priority not in PRIORITIES:
         raise ValueError(f"Priority must be one of {', '.join(PRIORITIES)}")
 
-    cursor = connection.execute(
-        "INSERT INTO tasks (task_name, description, priority, property_id) VALUES (?, ?, ?, ?)",
-        (task_name, description, priority, property_id),
+    row = fetch_one(
+        connection,
+        "INSERT INTO tasks (task_name, description, priority, property_id, user_id) "
+        "OUTPUT INSERTED.task_id VALUES (%s, %s, %s, %s, %s)",
+        (task_name, description, priority, property_id, user_id),
     )
     connection.commit()
-    return cursor.lastrowid
+    return row["task_id"]
 
 
-def list_tasks(connection, property_id):
+def list_tasks(connection, user_id, property_id):
     # open tasks first, then urgent before normal before low, newest first
-    return connection.execute(
-        """
-        SELECT * FROM tasks WHERE property_id = ?
+    return fetch_all(
+        connection,
+        f"""
+        SELECT {COLUMNS} FROM tasks WHERE property_id = %s AND user_id = %s
         ORDER BY
             CASE status WHEN 'done' THEN 1 ELSE 0 END,
             CASE priority WHEN 'urgent' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
             task_id DESC
         """,
-        (property_id,),
-    ).fetchall()
+        (property_id, user_id),
+    )
 
 
-def get_task(connection, task_id, property_id):
-    return connection.execute(
-        "SELECT * FROM tasks WHERE task_id = ? AND property_id = ?", (task_id, property_id)
-    ).fetchone()
+def get_task(connection, user_id, property_id, task_id):
+    return fetch_one(
+        connection,
+        f"SELECT {COLUMNS} FROM tasks WHERE task_id = %s AND property_id = %s AND user_id = %s",
+        (task_id, property_id, user_id),
+    )
 
 
 def can_transition(current_status, new_status):
     return new_status in ALLOWED_TRANSITIONS.get(current_status, ())
 
 
-def update_status(connection, task_id, property_id, new_status):
+def update_status(connection, user_id, property_id, task_id, new_status):
     if new_status not in STATUSES:
         raise ValueError(f"Status must be one of {', '.join(STATUSES)}")
 
-    task = get_task(connection, task_id, property_id)
+    task = get_task(connection, user_id, property_id, task_id)
     if task is None:
         raise LookupError("Task not found")
     if not can_transition(task["status"], new_status):
         raise ValueError(f"Cannot move task from {task['status']} to {new_status}")
 
-    connection.execute(
-        "UPDATE tasks SET status = ? WHERE task_id = ?", (new_status, task_id)
-    )
-    connection.commit()
+    execute(connection, "UPDATE tasks SET status = %s WHERE task_id = %s", (new_status, task_id))
 
 
-def delete_task(connection, task_id, property_id):
-    cursor = connection.execute(
-        "DELETE FROM tasks WHERE task_id = ? AND property_id = ?", (task_id, property_id)
-    )
-    connection.commit()
-    return cursor.rowcount == 1
+def delete_task(connection, user_id, property_id, task_id):
+    return execute(
+        connection,
+        "DELETE FROM tasks WHERE task_id = %s AND property_id = %s AND user_id = %s",
+        (task_id, property_id, user_id),
+    ) == 1
 
 
 def summarize(tasks):
@@ -101,80 +105,76 @@ def summarize(tasks):
     return summary
 
 
-# ---- routes ----
+# ---- routes (JSON for the static UI) ----
 
-@task_bp.before_request
-def require_login():
-    if "user_id" not in session:
-        return redirect("/login")
-
-
-def load_owned_property(connection, property_id):
-    found = get_property(connection, property_id, session["user_id"])
-    if found is None:
-        connection.close()
-        abort(404)
-    return found
-
-
-@task_bp.route("/properties/<int:property_id>")
-def property_tasks(property_id, error=None):
-    connection = Database.connect_sqlite()
-    found = load_owned_property(connection, property_id)
-    tasks = list_tasks(connection, property_id)
+@task_bp.route("/properties/<int:property_id>/tasks")
+@require_user
+def property_tasks(property_id):
+    # served from this service's own database only, so it works while property is down
+    connection = Database.connect()
+    tasks = list_tasks(connection, g.user_id, property_id)
     connection.close()
-    return render_template(
-        "property.html",
-        property=found,
-        tasks=tasks,
-        summary=summarize(tasks),
-        transitions=ALLOWED_TRANSITIONS,
-        priorities=PRIORITIES,
-        error=error,
-    )
+
+    for task in tasks:
+        task["next_statuses"] = list(ALLOWED_TRANSITIONS[task["status"]])
+    return jsonify(tasks=tasks, summary=summarize(tasks), priorities=list(PRIORITIES))
 
 
 @task_bp.route("/properties/<int:property_id>/tasks", methods=["POST"])
+@require_user
 def create_task(property_id):
-    connection = Database.connect_sqlite()
-    load_owned_property(connection, property_id)
+    # the flow that crosses the seam: a task may only be added to a property the user owns
     try:
-        add_task(
+        found = fetch_property(property_id, request.headers["Authorization"])
+    except PropertyServiceUnavailable:
+        return jsonify(error="Property service unavailable, try adding the task again later"), 503
+    if found is None:
+        return jsonify(error="Property not found"), 404
+
+    body = request.get_json(silent=True) or {}
+    connection = Database.connect()
+    try:
+        task_id = add_task(
             connection,
+            g.user_id,
             property_id,
-            request.form.get("task_name"),
-            request.form.get("description"),
-            request.form.get("priority", "normal"),
+            body.get("task_name"),
+            body.get("description"),
+            body.get("priority", "normal"),
         )
+        created = get_task(connection, g.user_id, property_id, task_id)
     except ValueError as error:
+        return jsonify(error=str(error)), 400
+    finally:
         connection.close()
-        return property_tasks(property_id, error=str(error))
 
-    connection.close()
-    return redirect(f"/properties/{property_id}")
+    return jsonify(created), 201
 
 
-@task_bp.route("/properties/<int:property_id>/tasks/<int:task_id>/status", methods=["POST"])
+@task_bp.route("/properties/<int:property_id>/tasks/<int:task_id>", methods=["PATCH"])
+@require_user
 def change_status(property_id, task_id):
-    connection = Database.connect_sqlite()
-    load_owned_property(connection, property_id)
+    body = request.get_json(silent=True) or {}
+    connection = Database.connect()
     try:
-        update_status(connection, task_id, property_id, request.form.get("status"))
+        update_status(connection, g.user_id, property_id, task_id, body.get("status"))
     except LookupError:
-        connection.close()
-        abort(404)
+        return jsonify(error="Task not found"), 404
     except ValueError as error:
+        return jsonify(error=str(error)), 400
+    finally:
         connection.close()
-        return property_tasks(property_id, error=str(error))
 
-    connection.close()
-    return redirect(f"/properties/{property_id}")
+    return "", 204
 
 
-@task_bp.route("/properties/<int:property_id>/tasks/<int:task_id>/delete", methods=["POST"])
+@task_bp.route("/properties/<int:property_id>/tasks/<int:task_id>", methods=["DELETE"])
+@require_user
 def remove_task(property_id, task_id):
-    connection = Database.connect_sqlite()
-    load_owned_property(connection, property_id)
-    delete_task(connection, task_id, property_id)
+    connection = Database.connect()
+    deleted = delete_task(connection, g.user_id, property_id, task_id)
     connection.close()
-    return redirect(f"/properties/{property_id}")
+
+    if not deleted:
+        return jsonify(error="Task not found"), 404
+    return "", 204
