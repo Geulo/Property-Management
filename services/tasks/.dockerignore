@@ -1,0 +1,11 @@
+# The build context is this folder. The Dockerfile copies only app.py and src/,
+# but anything listed here is never even sent to the builder.
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+.pytest_cache/
+.coverage
+tests/
+venv/
+.venv/

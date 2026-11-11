@@ -1,0 +1,74 @@
+# The whole system on one machine: docker compose up --build
+#
+#   ui (nginx, :8080) ──browser──▶ property (:8001) ──▶ SQL Server, database property
+#                     └─browser──▶ tasks (:8002) ─────▶ SQL Server, database tasks
+#                                    └──HTTP──▶ property:8000 (when a task is added)
+#
+# Passwords and the token key come from .env (git-ignored, copy .env.example).
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64  # no ARM build; on Apple Silicon enable Rosetta in Docker Desktop
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:?set SA_PASSWORD in .env, see .env.example}
+    ports: ["1433:1433"]  # only so tests on the host can reach it
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 5s
+      retries: 20
+      start_period: 20s
+
+  # One-off job: create the two databases and logins, then exit
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD}
+      PROPERTY_DB_PASSWORD: ${PROPERTY_DB_PASSWORD:?set PROPERTY_DB_PASSWORD in .env}
+      TASKS_DB_PASSWORD: ${TASKS_DB_PASSWORD:?set TASKS_DB_PASSWORD in .env}
+    volumes:
+      - ./db:/db:ro
+    entrypoint: ["/bin/sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -C -b -S sqlserver -U sa -P \"$$MSSQL_SA_PASSWORD\" -i /db/init.sql"]
+    restart: "no"
+
+  property:
+    build: ./services/property
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: mssql://property_user:${PROPERTY_DB_PASSWORD}@sqlserver:1433/property
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      CORS_ORIGIN: http://localhost:8080
+    ports: ["8001:8000"]
+
+  tasks:
+    build: ./services/tasks
+    # no depends_on property: tasks must start and serve its own data without it
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: mssql://tasks_user:${TASKS_DB_PASSWORD}@sqlserver:1433/tasks
+      SECRET_KEY: ${SECRET_KEY}
+      CORS_ORIGIN: http://localhost:8080
+      PROPERTY_URL: http://property:8000  # service name = host name on the compose network
+      PROPERTY_TIMEOUT_S: "2"
+    ports: ["8002:8000"]
+
+  # The static UI, served as plain files by a stock image (not a service container)
+  ui:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+    ports: ["8080:80"]
+
+volumes:
+  sqlserver-data:
