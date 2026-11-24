@@ -6,13 +6,17 @@
 #
 # Passwords and the token key come from .env (git-ignored, copy .env.example).
 
+# Passwords: each ${VAR:-default} uses .env when it exists (cp .env.example .env), and otherwise a
+# local-dev-only default, so `docker compose up --build` works from a clean clone. Those defaults only
+# protect the throwaway SQL Server container compose creates on your own machine; nothing on Azure uses
+# them (there every password is a GitHub secret, see .github/workflows/deploy.yml).
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     platform: linux/amd64  # no ARM build; on Apple Silicon enable Rosetta in Docker Desktop
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: ${SA_PASSWORD:?set SA_PASSWORD in .env, see .env.example}
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:-LocalDevOnly_Sa1}
     ports: ["1433:1433"]  # only so tests on the host can reach it
     volumes:
       - sqlserver-data:/var/opt/mssql
@@ -30,9 +34,9 @@ services:
       sqlserver:
         condition: service_healthy
     environment:
-      MSSQL_SA_PASSWORD: ${SA_PASSWORD}
-      PROPERTY_DB_PASSWORD: ${PROPERTY_DB_PASSWORD:?set PROPERTY_DB_PASSWORD in .env}
-      TASKS_DB_PASSWORD: ${TASKS_DB_PASSWORD:?set TASKS_DB_PASSWORD in .env}
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:-LocalDevOnly_Sa1}
+      PROPERTY_DB_PASSWORD: ${PROPERTY_DB_PASSWORD:-LocalDevOnly_Property1}
+      TASKS_DB_PASSWORD: ${TASKS_DB_PASSWORD:-LocalDevOnly_Tasks1}
     volumes:
       - ./db:/db:ro
     entrypoint: ["/bin/sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -C -b -S sqlserver -U sa -P \"$$MSSQL_SA_PASSWORD\" -i /db/init.sql"]
@@ -44,8 +48,8 @@ services:
       db-init:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: mssql://property_user:${PROPERTY_DB_PASSWORD}@sqlserver:1433/property
-      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      DATABASE_URL: mssql://property_user:${PROPERTY_DB_PASSWORD:-LocalDevOnly_Property1}@sqlserver:1433/property
+      SECRET_KEY: ${SECRET_KEY:-local-dev-only-not-a-real-secret}
       CORS_ORIGIN: http://localhost:8080
     ports: ["8001:8000"]
 
@@ -56,8 +60,8 @@ services:
       db-init:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: mssql://tasks_user:${TASKS_DB_PASSWORD}@sqlserver:1433/tasks
-      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URL: mssql://tasks_user:${TASKS_DB_PASSWORD:-LocalDevOnly_Tasks1}@sqlserver:1433/tasks
+      SECRET_KEY: ${SECRET_KEY:-local-dev-only-not-a-real-secret}
       CORS_ORIGIN: http://localhost:8080
       PROPERTY_URL: http://property:8000  # service name = host name on the compose network
       PROPERTY_TIMEOUT_S: "2"
