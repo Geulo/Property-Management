@@ -86,8 +86,13 @@ Or only its container: `docker compose up --build tasks` (starts its dependencie
 Each service has `migrations/NNN_name.sql`. At startup `src/migrations.py` applies every file not yet
 listed in the `schema_migrations` table, in name order, each in one transaction with its record, and
 logs `applied migration <file>`. A second start applies nothing. Applied files are never edited; a
-change is a new file. `002_add_task_updated_at.sql` changes the tasks table while it holds data
-(adds a column, backfills it, then makes it NOT NULL).
+change is a new file. Two migrations changed tables that already held data on Azure:
+
+- tasks `002_add_task_updated_at.sql`: adds a column, backfills it from `created_at`, then makes it NOT NULL.
+- property `002_add_property_units.sql`: adds `units INT NOT NULL DEFAULT 1` (1-500), so every existing
+  property keeps its data and gets 1 unit in the same statement.
+
+Each has a test that replays `001`, inserts a row, applies `002` and checks the row survived.
 
 ## Tests and coverage
 
@@ -107,7 +112,7 @@ pip install -r tests/integration/requirements.txt
 python -m pytest tests/integration -v
 ```
 
-Last local run (24 Nov): property 35 passed, 96% of `src/`; tasks 42 passed, 98% of `src/`.
+Last local run (24 Nov): property 45 passed, 96% of `src/`; tasks 42 passed, 98% of `src/`.
 
 ## CI/CD
 
@@ -121,7 +126,8 @@ Last local run (24 Nov): property 35 passed, 96% of `src/`; tasks 42 passed, 98%
   `openapi.yaml` against the OpenAPI specification.
 - `deploy.yml`, after CI succeeds on `main`: signs in to Azure with OIDC (no stored password), deploys
   the images of exactly that commit to Container Apps, publishes `ui/` with a generated `config.js`,
-  and fails unless both `/health` endpoints answer 200 within a few minutes.
+  and fails unless both `/health` endpoints answer 200 with that commit's SHA as `version`
+  within 3 minutes.
 
 Changes reach `main` through pull requests, so CI runs before CD.
 
