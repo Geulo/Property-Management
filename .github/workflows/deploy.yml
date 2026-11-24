@@ -37,11 +37,14 @@ jobs:
     # Only a successful CI run from a push to main (not a pull request whose branch is called main).
     if: github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')  # TEMPORARY
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash   # named explicitly, so every step also runs with -o pipefail
     steps:
       # Check out the same commit, so the UI files match the deployed services.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_SHA }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}  # TEMPORARY: was env.GIT_SHA
 
       - name: Log in to Azure (OIDC)
         uses: azure/login@v2
