@@ -3,75 +3,174 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ property['property_name'] }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Property</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body class="page">
     <header class="top-bar">
-        <a href="/">&larr; All properties</a>
-        <a href="/logout">Log out</a>
+        <a href="index.html">&larr; All properties</a>
+        <a href="login.html" onclick="logOut()">Log out</a>
     </header>
 
-    <h1>{{ property['property_name'] }}</h1>
-    <p class="address">{{ property['address'] }}</p>
+    <!-- from the property service -->
+    <h1 id="name">Loading&hellip;</h1>
+    <p class="address" id="address"></p>
+    <p class="notice" id="property-notice" hidden></p>
 
-    <p class="summary">
-        {{ summary['pending'] }} pending &middot;
-        {{ summary['in_progress'] }} in progress &middot;
-        {{ summary['done'] }} done
-        {% if summary['urgent_open'] %}
-        &middot; <strong class="urgent">{{ summary['urgent_open'] }} urgent open</strong>
-        {% endif %}
-    </p>
+    <!-- from the tasks service -->
+    <p class="summary" id="summary"></p>
 
-    {% if error %}
-    <p class="error-message">{{ error }}</p>
-    {% endif %}
+    <p class="error-message" id="error" hidden></p>
 
     <section class="panel">
         <h3>Maintenance Tasks</h3>
-        {% for task in tasks %}
-        <div class="task status-{{ task['status'] }}">
-            <div>
-                <strong>{{ task['task_name'] }}</strong>
-                <span class="tag priority-{{ task['priority'] }}">{{ task['priority'] }}</span>
-                <span class="tag">{{ task['status'].replace('_', ' ') }}</span>
-                {% if task['description'] %}<p class="description">{{ task['description'] }}</p>{% endif %}
-            </div>
-            <div class="task-actions">
-                {% for next_status in transitions[task['status']] %}
-                <form method="POST" action="/properties/{{ property['property_id'] }}/tasks/{{ task['task_id'] }}/status">
-                    <input type="hidden" name="status" value="{{ next_status }}">
-                    <button type="submit" class="small">{{ next_status.replace('_', ' ') }}</button>
-                </form>
-                {% endfor %}
-                <form method="POST" action="/properties/{{ property['property_id'] }}/tasks/{{ task['task_id'] }}/delete">
-                    <button type="submit" class="small danger">delete</button>
-                </form>
-            </div>
-        </div>
-        {% else %}
-        <p>No tasks for this property yet.</p>
-        {% endfor %}
+        <p class="notice" id="tasks-notice" hidden></p>
+        <div id="tasks"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="add-panel">
         <h3>Add a Task</h3>
-        <form method="POST" action="/properties/{{ property['property_id'] }}/tasks">
+        <form id="add-form">
             <input type="text" name="task_name" placeholder="e.g. Fix leaking tap" maxlength="80" required>
             <input type="text" name="description" placeholder="Details (optional)">
             <select name="priority">
-                {% for priority in priorities %}
-                <option value="{{ priority }}" {% if priority == 'normal' %}selected{% endif %}>{{ priority }}</option>
-                {% endfor %}
+                <option value="low">low</option>
+                <option value="normal" selected>normal</option>
+                <option value="urgent">urgent</option>
             </select>
             <button type="submit">Add Task</button>
         </form>
     </section>
 
-    <form method="POST" action="/properties/{{ property['property_id'] }}/delete"
-          onsubmit="return confirm('Delete this property and all its tasks?')">
-        <button type="submit" class="danger">Delete property</button>
-    </form>
+    <button type="button" class="danger" id="delete-property">Delete property</button>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+    <script>
+        requireLogin();
+
+        // property.html?id=7 -> "7"
+        const propertyId = new URLSearchParams(window.location.search).get("id");
+        const tasksPath = "/properties/" + propertyId + "/tasks";
+        const error = document.getElementById("error");
+        const form = document.getElementById("add-form");
+
+        // ---- the property itself (property service) ----
+        async function loadProperty() {
+            try {
+                const property = await api(PROPERTY_URL, "/properties/" + propertyId);
+                document.title = property.property_name;
+                document.getElementById("name").textContent = property.property_name;
+                document.getElementById("address").textContent = property.address;
+            } catch (err) {
+                // the tasks below come from the other service and still load
+                document.getElementById("name").textContent = "Property " + propertyId;
+                showError(document.getElementById("property-notice"),
+                    "Property details unavailable right now (" + err.message + "). Tasks below still work.");
+            }
+        }
+
+        // ---- its tasks and summary (tasks service) ----
+        async function loadTasks() {
+            const list = document.getElementById("tasks");
+            const notice = document.getElementById("tasks-notice");
+            try {
+                const data = await api(TASKS_URL, tasksPath);
+                showError(notice, "");
+                document.getElementById("add-panel").hidden = false;
+                renderSummary(data.summary);
+                list.replaceChildren(...data.tasks.map(renderTask));
+                if (data.tasks.length === 0) {
+                    list.append(el("p", "", "No tasks for this property yet."));
+                }
+            } catch (err) {
+                // the property above still shows; only the tasks part says it is unavailable
+                showError(notice, "Tasks unavailable right now (" + err.message + "). The property details above still work.");
+                document.getElementById("summary").textContent = "";
+                document.getElementById("add-panel").hidden = true;
+                list.replaceChildren();
+            }
+        }
+
+        // "2 pending · 1 in progress · 0 done · 1 urgent open"
+        function renderSummary(summary) {
+            const line = document.getElementById("summary");
+            line.textContent = summary.pending + " pending · " + summary.in_progress +
+                " in progress · " + summary.done + " done";
+            if (summary.urgent_open) {
+                line.append(" · ", el("strong", "urgent", summary.urgent_open + " urgent open"));
+            }
+        }
+
+        function renderTask(task) {
+            const row = el("div", "task status-" + task.status);
+
+            const info = el("div");
+            info.append(
+                el("strong", "", task.task_name), " ",
+                el("span", "tag priority-" + task.priority, task.priority), " ",
+                el("span", "tag", task.status.replace("_", " ")),
+            );
+            if (task.description) {
+                info.append(el("p", "description", task.description));
+            }
+
+            // one button per status the service says this task may move to
+            const actions = el("div", "task-actions");
+            for (const nextStatus of task.next_statuses) {
+                const button = el("button", "small", nextStatus.replace("_", " "));
+                button.onclick = () => changeTask(task.task_id, "PATCH", { status: nextStatus });
+                actions.append(button);
+            }
+            const remove = el("button", "small danger", "delete");
+            remove.onclick = () => changeTask(task.task_id, "DELETE");
+            actions.append(remove);
+
+            row.append(info, actions);
+            return row;
+        }
+
+        // change status or delete, then reload the list so the summary is right too
+        async function changeTask(taskId, method, body) {
+            try {
+                await api(TASKS_URL, tasksPath + "/" + taskId, method, body);
+                showError(error, "");
+            } catch (err) {
+                showError(error, err.message);
+            }
+            loadTasks();
+        }
+
+        // adding a task crosses the seam: tasks asks property whether this property is ours,
+        // so with property down this shows the tasks service's 503 message
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            try {
+                await api(TASKS_URL, tasksPath, "POST", {
+                    task_name: form.task_name.value,
+                    description: form.description.value,
+                    priority: form.priority.value,
+                });
+                form.reset();
+                showError(error, "");
+                loadTasks();
+            } catch (err) {
+                showError(error, err.message);
+            }
+        });
+
+        document.getElementById("delete-property").addEventListener("click", async () => {
+            if (!confirm("Delete this property?")) return;
+            try {
+                await api(PROPERTY_URL, "/properties/" + propertyId, "DELETE");
+                window.location.href = "index.html";
+            } catch (err) {
+                showError(error, err.message);
+            }
+        });
+
+        loadProperty();
+        loadTasks();
+    </script>
 </body>
 </html>

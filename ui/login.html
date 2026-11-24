@@ -4,15 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Property Manager Login</title>
-    <link rel="stylesheet" href="{{url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="login-container">
         <h1>Property Management</h1>
-        {% if error %}
-        <p class="error-message">{{ error }}</p>
-        {% endif %}
-        <form method="POST" action="/login">
+        <p class="error-message" id="error" hidden></p>
+        <form id="login-form">
             <input
                 type="email"
                 name="email"
@@ -26,10 +24,31 @@
                 required
             >
             <div class="signup-hyperlink">
-                <a href="/signup">Create Account</a>
+                <a href="signup.html">Create Account</a>
             </div>
             <button type="submit">Sign In</button>
         </form>
     </div>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+    <script>
+        const form = document.getElementById("login-form");
+        const error = document.getElementById("error");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();  // stay on the page, we send the form with fetch instead
+            try {
+                const data = await api(PROPERTY_URL, "/login", "POST", {
+                    email: form.email.value,
+                    password: form.password.value,
+                });
+                saveToken(data.token);
+                window.location.href = "index.html";
+            } catch (err) {
+                showError(error, err.message);
+            }
+        });
+    </script>
 </body>
 </html>
