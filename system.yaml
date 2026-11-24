@@ -10,7 +10,8 @@
 student: rjpenning.ieu2024   # IE username (part of the IE email before @)
 prefix: rjpenning-ieu2024    # the username with dots replaced by hyphens; starts every Azure name
 
-# Live HTTPS URL of the UI (storage static-website endpoint). PLACEHOLDER until the first deploy.
+# Live HTTPS URL of the UI (storage static-website endpoint). PLACEHOLDER until infra/setup.sh runs:
+# the real value is https://rjpenningieu2024ui.z<N>.web.core.windows.net/, Azure picks the zone N.
 public_url: https://rjpenningieu2024ui.placeholder.web.core.windows.net/
 
 ui:
