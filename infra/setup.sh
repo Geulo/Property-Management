@@ -119,26 +119,38 @@ create_database() {
   echo "Database $db ready"
 }
 
-# Creates the database user for one service (infra/create-db-user.sql) and returns its
-# DATABASE_URL, in the same mssql://user:password@host:port/database form the services read locally.
+# Creates the database user for one service (infra/create-db-user.sql), checks that it can log in,
+# and leaves its DATABASE_URL in the variable DB_URL, in the same
+# mssql://user:password@host:port/database form the services read locally.
+# (Not returned with $(...): bash turns `set -e` off inside $(...), so a failing sqlcmd there
+# went unnoticed on the first run and a URL with a never-set password was stored.)
 create_db_user() {
-  local db=$1 user=$2 password
+  local db=$1 user=$2 password attempt
+  local host="tcp:$SQL_SERVER.database.windows.net,1433"
   password=$(new_password)
-  # sqlcmd reads APP_USER / APP_PASSWORD from the environment as $(APP_USER) / $(APP_PASSWORD);
-  # SQLCMDPASSWORD is the admin password. -b stops on the first SQL error.
-  APP_USER="$user" APP_PASSWORD="$password" SQLCMDPASSWORD="$SQL_ADMIN_PASSWORD" \
-    sqlcmd -S "tcp:$SQL_SERVER.database.windows.net,1433" -d "$db" -U "$SQL_ADMIN" -b \
-    -i "$(dirname "$0")/create-db-user.sql" >&2
-  echo "mssql://$user:$password@$SQL_SERVER.database.windows.net:1433/$db"
+  # A new firewall rule can take a minute to apply, and a paused database a minute to resume,
+  # so try a few times before giving up.
+  for attempt in 1 2 3 4 5 6 7 8; do
+    # sqlcmd reads APP_USER / APP_PASSWORD from the environment as $(APP_USER) / $(APP_PASSWORD);
+    # SQLCMDPASSWORD is the admin password. -b makes sqlcmd exit non-zero on any SQL error.
+    if APP_USER="$user" APP_PASSWORD="$password" SQLCMDPASSWORD="$SQL_ADMIN_PASSWORD" \
+       sqlcmd -S "$host" -d "$db" -U "$SQL_ADMIN" -b -i "$(dirname "$0")/create-db-user.sql"; then
+      break
+    fi
+    [ "$attempt" -eq 8 ] && { echo "Could not create user $user in $db"; exit 1; }
+    echo "sqlcmd failed (attempt $attempt), retrying in 15 s ..."; sleep 15
+  done
+  # Prove it: log in as the new user with the new password, exactly as the service will.
+  SQLCMDPASSWORD="$password" sqlcmd -S "$host" -d "$db" -U "$user" -b -Q "SELECT 1" >/dev/null \
+    || { echo "User $user was created but cannot log in to $db"; exit 1; }
+  DB_URL="mssql://$user:$password@$SQL_SERVER.database.windows.net:1433/$db"
 }
 
 create_database "$PROPERTY_DB"
 create_database "$TASKS_DB"
-# A freshly created database may still be starting; give it a moment before connecting.
-sleep 20
-PROPERTY_DATABASE_URL=$(create_db_user "$PROPERTY_DB" property_app)
-TASKS_DATABASE_URL=$(create_db_user "$TASKS_DB" tasks_app)
-echo "Database users property_app and tasks_app ready (each sees only its own database)"
+create_db_user "$PROPERTY_DB" property_app; PROPERTY_DATABASE_URL=$DB_URL
+create_db_user "$TASKS_DB" tasks_app;       TASKS_DATABASE_URL=$DB_URL
+echo "Database users property_app and tasks_app ready and tested (each sees only its own database)"
 
 # ---------------------------------------------------------------------------------------------
 # 4. Container Apps environment (Consumption plan: pay per request/second, nothing when idle)
