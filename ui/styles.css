@@ -42,6 +42,7 @@ body {
     font-family: sans-serif; 
 }
 .card-link { text-decoration: none; color: inherit; }
+.info-pad { padding: 0 16px; }
 .property-card { 
     width: 300px; border: 1px solid #e2e8f0; border-radius: 12px; 
     overflow: hidden; background: #ffffff; transition: 0.2s; 
@@ -141,3 +142,15 @@ select {
 button.small { width: auto; padding: 6px 10px; font-size: 0.8rem; }
 button.danger { background-color: #dc2626; }
 button.danger:hover { background-color: #b91c1c; }
+
+/* static UI: messages are hidden until a page fills them in */
+[hidden] { display: none !important; }
+
+/* one service is down: the page still works, this says which part is missing */
+.notice {
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 15px;
+}
