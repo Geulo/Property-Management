@@ -6,13 +6,14 @@ from src.database import Database, execute, fetch_all, fetch_one
 property_bp = Blueprint("property_bp", __name__)
 
 MAX_NAME_LENGTH = 50
+MAX_UNITS = 500
 
-COLUMNS = "property_id, property_name, address, user_id"
+COLUMNS = "property_id, property_name, address, units, user_id"
 
 
 # ---- logic (no Flask, takes a connection so it can be unit tested) ----
 
-def add_property(connection, user_id, property_name, address):
+def add_property(connection, user_id, property_name, address, units=1):
     property_name = (property_name or "").strip()
     address = (address or "").strip()
 
@@ -20,12 +21,15 @@ def add_property(connection, user_id, property_name, address):
         raise ValueError("Property name and address are required")
     if len(property_name) > MAX_NAME_LENGTH:
         raise ValueError(f"Property name must be at most {MAX_NAME_LENGTH} characters")
+    # bool is an int in Python, so it is ruled out by name; "3" from a form is not accepted either
+    if type(units) is not int or not 1 <= units <= MAX_UNITS:
+        raise ValueError(f"Units must be a whole number from 1 to {MAX_UNITS}")
 
     row = fetch_one(
         connection,
-        "INSERT INTO properties (property_name, address, user_id) OUTPUT INSERTED.property_id "
-        "VALUES (%s, %s, %s)",
-        (property_name, address, user_id),
+        "INSERT INTO properties (property_name, address, units, user_id) OUTPUT INSERTED.property_id "
+        "VALUES (%s, %s, %s, %s)",
+        (property_name, address, units, user_id),
     )
     connection.commit()
     return row["property_id"]
@@ -74,7 +78,9 @@ def create_property():
     body = request.get_json(silent=True) or {}
     connection = Database.connect()
     try:
-        property_id = add_property(connection, g.user_id, body.get("property_name"), body.get("address"))
+        property_id = add_property(
+            connection, g.user_id, body.get("property_name"), body.get("address"), body.get("units", 1)
+        )
         created = get_property(connection, property_id, g.user_id)
     except ValueError as error:
         return jsonify(error=str(error)), 400

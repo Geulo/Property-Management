@@ -46,9 +46,13 @@ def test_property_flow(client):
     created = client.post("/properties", json={"property_name": "Canal House", "address": "Street 1"}, headers=headers)
     assert created.status_code == 201
     property_id = created.get_json()["property_id"]
+    assert created.get_json()["units"] == 1
     assert client.post("/properties", json={"property_name": ""}, headers=headers).status_code == 400
+    block = {"property_name": "Block A", "address": "Street 2", "units": 12}
+    assert client.post("/properties", json=block, headers=headers).get_json()["units"] == 12
+    assert client.post("/properties", json={**block, "units": 0}, headers=headers).status_code == 400
 
-    assert client.get("/properties", headers=headers).get_json()["properties"][0]["property_name"] == "Canal House"
+    assert client.get("/properties", headers=headers).get_json()["properties"][1]["property_name"] == "Canal House"
     assert client.get(f"/properties/{property_id}", headers=headers).status_code == 200
 
     assert client.delete(f"/properties/{property_id}", headers=headers).status_code == 204
