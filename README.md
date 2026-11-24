@@ -2,127 +2,183 @@
 
 A small web app for private landlords to keep track of their rental properties and the
 maintenance work on each one (broken boiler, leaking tap, gutters to clean...).
-Built for the first assignment of Software Development and DevOps.
+Built for Software Development and DevOps: a Flask monolith in Assignment 1, split into two
+services, containerised and deployed to Azure in Assignment 2.
 
 **Target user:** a private landlord with roughly 5-20 rental units who currently tracks
 repair requests in WhatsApp chats and notes, and loses track of what is still open.
 
-## Feature domains
+**Live:** https://rjpenningieu2024ui.z1.web.core.windows.net/
 
-| Domain | Module | What it does |
-|---|---|---|
-| Properties | `src/property.py` | Add, list and delete the properties you own. Every query is scoped to the logged-in user. |
-| Maintenance tasks | `src/task.py` | Per property: add tasks with a priority, move them `pending -> in_progress -> done` (or reopen), delete them, and see a summary of open/urgent work. |
-| Accounts (supporting) | `src/user.py` | Sign up / log in / log out with bcrypt-hashed passwords and a Flask session. |
+## Architecture
 
-The task domain only talks to the property domain through one function, `get_property()`
-(see the comment at the top of `src/task.py`). That import is where the split would go
-if tasks became its own service.
+```
+browser ── ui/ (static HTML/JS) ──┬──▶ property service ──▶ SQL database "property" (users, properties)
+                                  └──▶ tasks service ────▶ SQL database "tasks" (tasks)
+                                          └──HTTP──▶ property: GET /properties/{id} when a task is added
+```
 
-## Requirements
+| Service | Folder | Owns | Talks to |
+|---|---|---|---|
+| property | `services/property/` | users, login, properties | its own database |
+| tasks | `services/tasks/` | maintenance tasks per property | its own database; property over HTTP (`PROPERTY_URL`, 2 s timeout) |
+| UI | `ui/` | static pages | both services from the browser (`ui/config.js`) |
 
-- Python 3.11+ (developed on 3.14)
-- No external services: storage is a single SQLite file
+The seam is the one from ADR-2: in Assignment 1 `task.py` imported `get_property()`; now tasks asks
+the property service over HTTP. Login: property signs a token, tasks checks it with the same
+`SECRET_KEY`, so tasks keeps serving its own data while property is down. If property is down,
+adding a task answers 503 "Property service unavailable" within the timeout. Decisions: `ADR.md` 6-10.
+Machine-readable description: `system.yaml` and `services/<name>/openapi.yaml`.
 
-## Setup and run
+## Run the whole system locally
+
+Needs Docker Desktop. On Apple Silicon, enable "Use Rosetta for x86_64/amd64 emulation" in
+Docker Desktop (SQL Server has no ARM image).
 
 ```bash
-git clone https://github.com/Geulo/Property-Management.git
-cd Property-Management
-python3 -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
+cp .env.example .env    # then fill in the four values (instructions in the file)
+docker compose up --build
 ```
 
-Then open http://localhost:5000, create an account and log in.
+- UI: http://localhost:8080
+- property: http://localhost:8001/health
+- tasks: http://localhost:8002/health
 
-On macOS, port 5000 is often taken by AirPlay Receiver. If so, run `PORT=5001 python main.py`
-and open http://localhost:5001 instead.
+Compose starts SQL Server, waits for its healthcheck, runs `db/init.sql` once (`db-init`: one database
+and one login per service, safe to re-run), then both services (each applies its pending migrations at
+startup) and nginx serving `ui/`.
 
-The database and its tables are created automatically on first start. There is no
-migration or setup step.
+Try a partial failure: `docker compose stop property`, then add a task in the UI (clear error) and
+see that the task list still loads. `docker compose start property` brings it back.
 
-## Run with Docker
+`docker compose down` keeps the data; `docker compose down -v` deletes it.
 
-The `Dockerfile` is the course template with its four TODOs filled in.
+## Run a single service
+
+Each service needs a SQL Server and its env vars. With the compose SQL Server running
+(`docker compose up -d sqlserver db-init`):
 
 ```bash
-docker build -t property-management .
-docker run -p 8000:8000 -v pm-data:/data property-management
+cd services/tasks
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+DATABASE_URL="mssql://tasks_user:<TASKS_DB_PASSWORD>@localhost:1433/tasks" \
+SECRET_KEY="<same as in .env>" PORT=8002 python app.py
 ```
 
-Then open http://localhost:8000. Inside the container `PORT=8000` and `DATA_DIR=/data`, so the
-database is at `/data/property_management.db` on the `pm-data` volume and survives the
-container being removed. Use another port with `-e PORT=9000 -p 9000:9000`.
+Or only its container: `docker compose up --build tasks` (starts its dependencies too).
 
-### Container contract check (§7 evidence)
+## Configuration
 
-Output of `./container/run.sh` from the course repo, run against this repo on 2026-10-13:
+| Variable | Service | Default | Purpose |
+|---|---|---|---|
+| `DATABASE_URL` | both | none (secret) | `mssql://user:password@host:1433/database` |
+| `SECRET_KEY` | both | none (secret) | signs login tokens; must be the same in both |
+| `PORT` | both | `8000` | port to listen on |
+| `CORS_ORIGIN` | both | `http://localhost:8080` | the only browser origin allowed to call the service |
+| `GIT_SHA` | both | `dev` | version reported by `/health` |
+| `DB_CONNECT_ATTEMPTS` | both | `8` | connection retries with backoff (SQL Server start, Azure SQL resume) |
+| `PROPERTY_URL` | tasks | `http://property:8000` | base URL of the property service |
+| `PROPERTY_TIMEOUT_S` | tasks | `2` | timeout of every call to property |
 
-```
-=== SDD Assignment 1 contract check ===
+## Database migrations
 
-==> Repository shape
-  PASS  one Dockerfile, one manifest (requirements.txt)
-
-==> Build from a clean context, no build args
-  PASS  image built
-  PASS  image size 53 MB
-
-==> Start on PORT=8000 and reach it from the host
-  PASS  HTTP 302 from http://localhost:8000/
-
-==> SQLite file under DATA_DIR
-  PASS  found in /data: property_management.db
-
-==> Data persists, and a second boot does not re-seed
-  PASS  volume at /data persists
-  PASS  row counts unchanged across restart: properties=0 tasks=0 users=0
-
-==> PORT override is honoured (not hardcoded)
-  PASS  HTTP 302 from http://localhost:9123/
-
-=== ALL CHECKS PASSED ===
-```
-
-## Configuration (environment variables)
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `PORT` | `5000` | Port to listen on (always binds `0.0.0.0`) |
-| `DATA_DIR` | `data` | Directory for the SQLite file. The database lives at `$DATA_DIR/property_management.db` |
-| `SECRET_KEY` | random per start | Signs the session cookie. Set it in deployment, otherwise everyone is logged out on restart |
-| `FLASK_DEBUG` | `0` | Set to `1` for the Flask debugger / auto-reload during development |
-
-Example: `PORT=8080 DATA_DIR=/var/lib/pm SECRET_KEY=change-me python main.py`
+Each service has `migrations/NNN_name.sql`. At startup `src/migrations.py` applies every file not yet
+listed in the `schema_migrations` table, in name order, each in one transaction with its record, and
+logs `applied migration <file>`. A second start applies nothing. Applied files are never edited; a
+change is a new file. `002_add_task_updated_at.sql` changes the tasks table while it holds data
+(adds a column, backfills it, then makes it NOT NULL).
 
 ## Tests and coverage
 
+Unit tests run against a real SQL Server (tests that need one are skipped without it):
+
 ```bash
-python -m pytest --cov=src --cov-report=term-missing
+cd services/property    # or services/tasks
+pip install -r requirements-dev.txt
+TEST_DATABASE_URL="mssql://sa:<SA_PASSWORD>@localhost:1433/property_test" \
+  python -m pytest --cov=src --cov-report=term-missing --cov-fail-under=70
 ```
 
-Result (2026-10-12): **52 passed, 99% coverage of `src/`** (221 statements, 1 missed).
+Integration test across the seam, against the running compose stack:
 
-- `tests/test_user.py`, `tests/test_property.py` and `tests/test_task.py` unit-test the business
-  logic directly against a fresh in-memory SQLite database per test.
-- `tests/test_routes.py` is a small smoke test through the Flask test client, one happy path
-  per domain plus the main error cases.
+```bash
+pip install -r tests/integration/requirements.txt
+python -m pytest tests/integration -v
+```
+
+Last local run (24 Nov): property 35 passed, 96% of `src/`; tasks 42 passed, 98% of `src/`.
+
+## CI/CD
+
+`.github/workflows/`:
+
+- `ci.yml`, every push and pull request: ruff and pytest per service against a throwaway SQL Server
+  (password generated in the run), coverage gate of 70% per service, the integration test on the
+  compose stack, and both images built. On `main` only, the images are pushed to GHCR as
+  `ghcr.io/geulo/pm-<service>:<commit sha>`.
+- `contracts.yml`, every push and pull request: `system.yaml` against `system.schema.json`, each
+  `openapi.yaml` against the OpenAPI specification.
+- `deploy.yml`, after CI succeeds on `main`: signs in to Azure with OIDC (no stored password), deploys
+  the images of exactly that commit to Container Apps, publishes `ui/` with a generated `config.js`,
+  and fails unless both `/health` endpoints answer 200 within a few minutes.
+
+Changes reach `main` through pull requests, so CI runs before CD.
+
+## Deployment on Azure
+
+| Resource | Name |
+|---|---|
+| Resource group | `rjpenning-ieu2024-rg` (Germany West Central) |
+| Container Apps (Consumption, 0-1 replicas) | `rjpenning-ieu2024-property`, `rjpenning-ieu2024-tasks` in `rjpenning-ieu2024-env` |
+| Azure SQL serverless (0.5-1 vCore, auto-pause) | `rjpenning-ieu2024-property-db`, `rjpenning-ieu2024-tasks-db` on `rjpenning-ieu2024-sql` |
+| UI (Storage static website) | `rjpenningieu2024ui` |
+| Deploy identity (OIDC from GitHub `main`) | `rjpenning-ieu2024-deploy` |
+
+**Deviation from the brief (§7):** the course's service principal was never provided, so everything
+runs in my own Azure for Students subscription, with my own resource group and deploy identity.
+Names and settings otherwise follow §7. See ADR-8.
+
+### Reproduce the initial setup
+
+Once, from a terminal with the Azure CLI, `gh` and `sqlcmd`:
+
+```bash
+az login
+bash infra/setup.sh
+```
+
+The script picks a region the subscription allows, creates the resource group, the SQL server (SQL
+authentication on, firewall "allow Azure services"), both serverless databases, one database user per
+service with access to its own database only, the Container Apps environment, the storage account for
+the UI and the deploy identity with an OIDC trust for `main`, then stores the GitHub secrets
+(`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `PROPERTY_DATABASE_URL`,
+`TASKS_DATABASE_URL`, `SECRET_KEY`). The GHCR packages `pm-property` and `pm-tasks` must be public.
+After that, nothing is changed by hand: every deploy comes from the pipeline.
 
 ## Project structure
 
 ```
-main.py              app factory: config from env, registers blueprints, creates schema
-src/database.py      SQLite connection (DATA_DIR path, row factory, foreign keys on)
-src/schema.py        CREATE TABLE statements for users, properties, tasks
-src/user.py          accounts domain: create_user, authenticate + routes
-src/property.py      properties domain: add/list/get/delete + routes
-src/task.py          tasks domain: add/list/update_status/delete/summarize + routes
-src/util.py          bcrypt password hashing
-templates/           Jinja2 pages (login, signup, property list, property detail)
-static/styles.css    styling
-tests/               pytest suite
-ADR.md               architecture decision log
+services/property/   app.py, src/ (user, property, auth, database, migrations, observability),
+                     migrations/, tests/, openapi.yaml, Dockerfile, requirements*.txt
+services/tasks/      app.py, src/ (task, property_client, auth, database, migrations, observability),
+                     migrations/, tests/, openapi.yaml, Dockerfile, requirements*.txt
+ui/                  static pages, app.js, config.js (overwritten at deploy)
+db/init.sql          local databases and logins for compose
+infra/setup.sh       one-time Azure setup
+tests/integration/   cross-seam test on the compose stack
+docker-compose.yml   the whole system locally
+system.yaml          system description, validated against system.schema.json
+ADR.md               architecture decisions (1-5 Assignment 1, 6-10 Assignment 2)
 AI_USAGE.md          AI usage log
 ```
+
+## Process note
+
+Most of Assignment 2 was built on 11 and 24 November, so the commit history does not meet the
+"6 distinct days" cadence asked for in §6.
+
+## AI disclosure
+
+AI tools were used as described in `AI_USAGE.md` (ONEchat in Assignment 1, Claude Code in both).
+Every row lists my prompt, what I kept or changed, and how the result works in my own words.
