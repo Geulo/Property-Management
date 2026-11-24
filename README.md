@@ -36,9 +36,13 @@ Needs Docker Desktop. On Apple Silicon, enable "Use Rosetta for x86_64/amd64 emu
 Docker Desktop (SQL Server has no ARM image).
 
 ```bash
-cp .env.example .env    # then fill in the four values (instructions in the file)
 docker compose up --build
 ```
+
+That works from a clean clone: without a `.env`, compose uses throwaway local-only passwords
+(marked `local-dev-only` in `docker-compose.yml`) for the SQL Server container it creates itself. They
+protect nothing outside your machine and are never used on Azure, where every password is a GitHub
+secret. To choose your own, `cp .env.example .env` and fill in the four values.
 
 - UI: http://localhost:8080
 - property: http://localhost:8001/health
@@ -145,11 +149,9 @@ Changes reach `main` through pull requests, so CI runs before CD.
 runs in my own Azure for Students subscription, with my own resource group and deploy identity.
 Names and settings otherwise follow §7. See ADR-8.
 
-**Second deviation, the UI host:** the UI is an Azure Storage static website instead of Static Web Apps.
-The subscription's region policy allows only Spain Central, Norway East, Germany West Central, Italy North
-and Poland Central, and Static Web Apps exist only in Central US, East US 2, West US 2, West Europe and East
-Asia (`az provider show -n Microsoft.Web`), so no allowed region has them. The static website serves the same
-files over HTTPS, costs only its storage, and gets `config.js` from the deploy the same way.
+**UI host:** the UI is an Azure Storage static website (`rjpenningieu2024ui`), as the grading criteria
+and `system.schema.json` expect. `deploy.yml` writes `config.js` with both services' URLs and uploads `ui/`
+to its `$web` container.
 
 ### Reproduce the initial setup
 

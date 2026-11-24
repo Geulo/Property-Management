@@ -39,10 +39,10 @@ cross the seam.
 | Deploy identity (OIDC, no stored password) | `rjpenning-ieu2024-deploy` | free |
 | Images | `ghcr.io/geulo/pm-property`, `ghcr.io/geulo/pm-tasks` (public, tagged with the commit SHA) | free |
 
-Two disclosed deviations from §7 (README and ADR-8): the course's service principal was never provided, so
-everything runs in my own Azure for Students subscription and resource group `rjpenning-ieu2024-rg`; and the
-subscription's region policy allows no region where Static Web Apps exist, so the UI is a Storage static
-website, which serves the same files over HTTPS and gets its generated `config.js` from the same deploy step.
+One disclosed deviation from §7 (README and ADR-8): the course's service principal was never provided, so
+everything runs in my own Azure for Students subscription and resource group `rjpenning-ieu2024-rg`, with the
+same names and settings otherwise. The UI is the Storage static website the criteria ask for; the deploy
+writes its `config.js` with both services' URLs.
 
 ## 3. Database per service
 
