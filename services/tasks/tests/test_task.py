@@ -3,6 +3,7 @@ import pytest
 from src.task import (
     add_task,
     can_transition,
+    delete_property_tasks,
     delete_task,
     get_task,
     list_tasks,
@@ -100,6 +101,17 @@ def test_delete_task_wrong_property(connection, user_id, property_id):
     other_property = property_id + 1
     task_id = add_task(connection, user_id, property_id, "Fix tap")
     assert delete_task(connection, user_id, other_property, task_id) is False
+
+
+def test_delete_property_tasks_removes_only_that_users_property(connection, user_id, property_id):
+    add_task(connection, user_id, property_id, "Fix tap")
+    add_task(connection, user_id, property_id, "Clean gutters")
+    kept_other_property = add_task(connection, user_id, property_id + 1, "Paint door")
+    kept_other_user = add_task(connection, user_id + 1, property_id, "Not mine")
+    assert delete_property_tasks(connection, user_id, property_id) == 2
+    assert list_tasks(connection, user_id, property_id) == []
+    assert get_task(connection, user_id, property_id + 1, kept_other_property) is not None
+    assert get_task(connection, user_id + 1, property_id, kept_other_user) is not None
 
 
 def test_summarize():

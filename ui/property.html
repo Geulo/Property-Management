@@ -161,6 +161,14 @@
 
         document.getElementById("delete-property").addEventListener("click", async () => {
             if (!confirm("Delete this property?")) return;
+            // tasks first: the databases can't cascade across the seam, so the UI does it in order.
+            // If tasks is down, stop here and keep the property, so no tasks are left behind.
+            try {
+                await api(TASKS_URL, "/properties/" + propertyId + "/tasks", "DELETE");
+            } catch (err) {
+                showError(error, "Tasks service unavailable, so the property was not deleted. Try again later.");
+                return;
+            }
             try {
                 await api(PROPERTY_URL, "/properties/" + propertyId, "DELETE");
                 window.location.href = "index.html";

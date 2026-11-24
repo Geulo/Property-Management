@@ -53,7 +53,7 @@ def get_property(connection, property_id, user_id):
 
 
 def delete_property(connection, property_id, user_id):
-    # the property's tasks live in the tasks service and are not deleted here (see README)
+    # the property's tasks live in the tasks service: the UI deletes them first (ADR-7)
     return execute(
         connection,
         "DELETE FROM properties WHERE property_id = %s AND user_id = %s",

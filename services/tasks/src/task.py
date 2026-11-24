@@ -98,6 +98,15 @@ def delete_task(connection, user_id, property_id, task_id):
     ) == 1
 
 
+def delete_property_tasks(connection, user_id, property_id):
+    # all of one property's tasks, called by the UI just before it deletes the property itself
+    return execute(
+        connection,
+        "DELETE FROM tasks WHERE property_id = %s AND user_id = %s",
+        (property_id, user_id),
+    )
+
+
 def to_json(task):
     # datetime -> ISO 8601 text, which JSON (and the UI) can read
     return {**task, "updated_at": task["updated_at"].isoformat()}
@@ -185,4 +194,15 @@ def remove_task(property_id, task_id):
 
     if not deleted:
         return jsonify(error="Task not found"), 404
+    return "", 204
+
+
+@task_bp.route("/properties/<int:property_id>/tasks", methods=["DELETE"])
+@require_user
+def remove_property_tasks(property_id):
+    # The databases can't cascade a property delete across the seam, so the UI calls this first;
+    # if tasks is down, the UI stops and the property is not deleted (nothing is left behind).
+    connection = Database.connect()
+    delete_property_tasks(connection, g.user_id, property_id)
+    connection.close()
     return "", 204

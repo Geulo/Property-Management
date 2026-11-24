@@ -6,6 +6,7 @@ import src.task
 from app import create_app
 from conftest import TEST_DATABASE_URL
 from src.auth import make_token
+from src.database import Database
 from src.property_client import PropertyServiceUnavailable
 
 
@@ -83,3 +84,21 @@ def test_cors_only_for_the_ui_origin(client):
     assert allowed.headers["Access-Control-Allow-Origin"] == "http://localhost:8080"
     other = client.get("/health", headers={"Origin": "https://evil.example"})
     assert "Access-Control-Allow-Origin" not in other.headers
+
+
+def test_delete_all_tasks_of_a_property(client, headers, monkeypatch):
+    property_answers(monkeypatch, {"property_id": 7})
+    client.post("/properties/7/tasks", json={"task_name": "Fix tap"}, headers=headers)
+    assert client.delete("/properties/7/tasks", headers=headers).status_code == 204
+    assert client.get("/properties/7/tasks", headers=headers).get_json()["tasks"] == []
+    assert client.delete("/properties/7/tasks").status_code == 401
+
+
+def test_health_is_503_without_its_database(client, monkeypatch):
+    def unreachable(*args, **kwargs):
+        raise ConnectionError("database down")
+
+    monkeypatch.setattr(Database, "connect", unreachable)
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert response.get_json()["db"] == "error"
