@@ -21,6 +21,7 @@
         <form id="add-form">
             <input type="text" name="property_name" placeholder="Property Name" maxlength="50" required>
             <input type="text" name="address" placeholder="Address" required>
+            <input type="number" name="units" placeholder="Units" min="1" max="500" value="1" required>
             <button type="submit">Add Property</button>
         </form>
     </section>
@@ -40,7 +41,8 @@
             link.href = "property.html?id=" + property.property_id;
             const card = el("div", "property-card");
             const pad = el("div", "info-pad");
-            pad.append(el("h3", "name", property.property_name), el("p", "address", property.address));
+            pad.append(el("h3", "name", property.property_name), el("p", "address", property.address),
+                el("p", "units", property.units === 1 ? "1 unit" : property.units + " units"));
             card.append(pad);
             link.append(card);
             return link;
@@ -64,6 +66,7 @@
                 await api(PROPERTY_URL, "/properties", "POST", {
                     property_name: form.property_name.value,
                     address: form.address.value,
+                    units: Number(form.units.value),
                 });
                 form.reset();
                 showError(error, "");

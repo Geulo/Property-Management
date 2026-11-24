@@ -52,3 +52,19 @@ def test_cannot_delete_other_users_property(connection, user_id, other_user_id):
     property_id = add_property(connection, user_id, "Canal House", "Street 1")
     assert delete_property(connection, property_id, other_user_id) is False
     assert get_property(connection, property_id, user_id) is not None
+
+
+def test_units_default_to_one(connection, user_id):
+    property_id = add_property(connection, user_id, "Canal House", "Street 1")
+    assert get_property(connection, property_id, user_id)["units"] == 1
+
+
+def test_units_are_stored(connection, user_id):
+    property_id = add_property(connection, user_id, "Block A", "Street 1", units=12)
+    assert get_property(connection, property_id, user_id)["units"] == 12
+
+
+@pytest.mark.parametrize("units", [0, -1, 501, "3", 2.5, True, None])
+def test_bad_units_rejected(units):
+    with pytest.raises(ValueError, match="Units"):
+        add_property(None, 1, "House", "Street 1", units=units)

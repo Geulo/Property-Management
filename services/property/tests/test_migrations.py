@@ -37,3 +37,37 @@ def test_failed_migration_is_not_recorded(connection, scratch_versions, tmp_path
     with pytest.raises(Exception):
         apply_migrations(connection, tmp_path)
     assert "903_broken.sql" not in recorded(connection)
+
+
+def test_002_keeps_existing_properties_and_gives_them_one_unit(connection, tmp_path):
+    # Replays 001 then 002 on an empty database, with a property inserted in between: the same
+    # order as on Azure, where properties existed before 002 was deployed.
+    from conftest import TEST_DATABASE_URL, ensure_database
+    from src.database import Database, fetch_one
+    from src.migrations import MIGRATIONS_DIR
+
+    url = TEST_DATABASE_URL.rsplit("/", 1)[0] + "/property_migration_test"
+    ensure_database(url)
+    fresh = Database.connect(url, attempts=1)
+    cursor = fresh.cursor()
+    for table in ("properties", "users", "health_probe", "schema_migrations"):
+        cursor.execute(f"IF OBJECT_ID('{table}', 'U') IS NOT NULL DROP TABLE {table}")
+    fresh.commit()
+
+    first = tmp_path / "001_init.sql"
+    first.write_text((MIGRATIONS_DIR / "001_init.sql").read_text())
+    apply_migrations(fresh, tmp_path)
+    cursor.execute("INSERT INTO users (username, email, password_hash) VALUES ('r', 'r@example.com', 'x')")
+    cursor.execute(
+        "INSERT INTO properties (property_name, address, user_id) "
+        "VALUES ('Madrid Apartment', 'Plaza 9', SCOPE_IDENTITY())"
+    )
+    fresh.commit()
+
+    second = tmp_path / "002_add_property_units.sql"
+    second.write_text((MIGRATIONS_DIR / "002_add_property_units.sql").read_text())
+    assert apply_migrations(fresh, tmp_path) == ["002_add_property_units.sql"]
+
+    found = fetch_one(fresh, "SELECT property_name, address, units FROM properties")
+    assert found == {"property_name": "Madrid Apartment", "address": "Plaza 9", "units": 1}
+    fresh.close()
