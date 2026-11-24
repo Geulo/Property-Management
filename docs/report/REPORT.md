@@ -2,13 +2,13 @@
 
 Ruben Penning · IE BCSAI · Software Development and DevOps · Individual Assignment 2 · 24 November 2026
 
-| | |
-|---|---|
-| Repository | https://github.com/Geulo/Property-Management |
-| Graded commit | tag `submission` on `main` (SHA in the submission form) |
-| Live UI | https://rjpenningieu2024ui.z1.web.core.windows.net/ |
-| property service | https://rjpenning-ieu2024-property.kindpond-7b842bee.germanywestcentral.azurecontainerapps.io |
-| tasks service | https://rjpenning-ieu2024-tasks.kindpond-7b842bee.germanywestcentral.azurecontainerapps.io |
+<table class="facts">
+<tr><td>Repository</td><td>https://github.com/Geulo/Property-Management</td></tr>
+<tr><td>Graded commit</td><td>tag <code>submission</code> on <code>main</code> (SHA in the submission form)</td></tr>
+<tr><td>Live UI</td><td>https://rjpenningieu2024ui.z1.web.core.windows.net/</td></tr>
+<tr><td>property service</td><td>https://rjpenning-ieu2024-property.kindpond-7b842bee.germanywestcentral.azurecontainerapps.io</td></tr>
+<tr><td>tasks service</td><td>https://rjpenning-ieu2024-tasks.kindpond-7b842bee.germanywestcentral.azurecontainerapps.io</td></tr>
+</table>
 
 The Assignment 1 monolith (a Flask app for landlords tracking maintenance work) is split along the seam from
 ADR-2 into a **property** service (accounts, login, properties) and a **tasks** service (maintenance tasks),
@@ -44,6 +44,8 @@ everything runs in my own Azure for Students subscription and resource group `rj
 same names and settings otherwise. The UI is the Storage static website the criteria ask for; the deploy
 writes its `config.js` with both services' URLs.
 
+<div class="newpage"></div>
+
 ## 3. Database per service
 
 ![Database per service](4-databases.png)
@@ -67,7 +69,10 @@ that already held data on Azure.
 | Startup log | 13:53:39 | `applied migration 002_add_property_units.sql` (Container Apps console log) |
 | After | 13:55:08 | Same request: same row, same id, name and address, now `"units": 1` |
 
-<p class="pair"><img src="5-migration-before.jpg" alt="Before the migration: no units" style="width:230px"> <img src="6-migration-after.jpg" alt="After: the same property, 1 unit" style="width:230px"></p>
+<div class="pair">
+<figure><img src="5-migration-before.jpg" alt="Before the migration"><figcaption>Before (13:50 UTC): no units</figcaption></figure>
+<figure><img src="6-migration-after.jpg" alt="After the migration"><figcaption>After (13:55 UTC): the same property, "1 unit"</figcaption></figure>
+</div>
 
 Earlier the same day, tasks' `002_add_task_updated_at.sql` added a column to the live tasks table, backfilled it
 from `created_at`, then made it NOT NULL; its log line is `applied migration 002_add_task_updated_at.sql` at
@@ -75,7 +80,10 @@ from `created_at`, then made it NOT NULL; its log line is `applied migration 002
 
 ## 5. Partial failure
 
-![property stopped: adding a task fails clearly, tasks still work](7-property-down.jpg) ![tasks stopped: the property page still works](8-tasks-down.jpg)
+<div class="pair">
+<figure><img src="7-property-down.jpg" alt="property stopped"><figcaption>property stopped: adding a task gives a clear error, tasks still work</figcaption></figure>
+<figure><img src="8-tasks-down.jpg" alt="tasks stopped"><figcaption>tasks stopped: the property page still works</figcaption></figure>
+</div>
 
 With **property** stopped, the tasks service keeps listing and updating tasks; adding one returns
 `503 {"error": "Property service unavailable, try adding the task again later"}` within the 2 s timeout, and the
@@ -101,7 +109,7 @@ compose stack in every CI run.
 CI on every push and pull request runs ruff, the unit tests of each service against a throwaway SQL Server with a
 70% coverage gate (property 96%, tasks 98%), the cross-seam integration test on the compose stack, the contract
 checks (`system.yaml` against `system.schema.json`, both OpenAPI documents) and both image builds. Every change
-reached `main` through a pull request (#1-#10).
+reached `main` through a pull request (#1-#13).
 
 ## 7. README
 
