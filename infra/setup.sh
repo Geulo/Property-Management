@@ -55,8 +55,9 @@ echo "Regions this subscription allows: $(echo $ALLOWED)"
 if [ -n "$ALLOWED" ] && ! echo "$ALLOWED" | grep -qx "$LOCATION"; then
   echo "$LOCATION is not allowed here; rerun with LOCATION=<one of the above>"; exit 1
 fi
-# Note: Static Web Apps only exist in centralus, eastus2, westus2, westeurope and eastasia, none of
-# which this policy allows. So the UI goes to an Azure Storage static website instead (step 5).
+# Note: the UI goes to an Azure Storage static website (step 5), as the course's system.schema.json
+# expects. Static Web Apps would not work here anyway: they only exist in centralus, eastus2,
+# westus2, westeurope and eastasia, none of which this policy allows.
 
 # Resource providers must be registered once per subscription before their resources can be created.
 for provider in Microsoft.Sql Microsoft.App Microsoft.OperationalInsights Microsoft.Storage Microsoft.ManagedIdentity; do
@@ -155,7 +156,7 @@ fi
 echo "Container Apps environment $ENV_NAME ready"
 
 # ---------------------------------------------------------------------------------------------
-# 5. Storage account serving the UI as a static website (stand-in for a Static Web App, see step 0)
+# 5. Storage account serving the UI as a static website (name: prefix without hyphens + "ui")
 # ---------------------------------------------------------------------------------------------
 az storage account create -g "$RG" -n "$STORAGE" -l "$LOCATION" \
   --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 --allow-blob-public-access false --output none
