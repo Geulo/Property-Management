@@ -1,0 +1,109 @@
+# yaml-language-server: $schema=./system.schema.json
+#
+# Machine-readable description of the whole system (Assignment 2 §8a).
+# Validated against the course's system.schema.json in .github/workflows/contracts.yml.
+# Must match the code and the deployment: when a service reads a new env var, add it here.
+#
+# PLACEHOLDER (to replace before grading):
+#   - public_url: the UI's storage static-website URL, known after the first deploy
+
+student: rjpenning.ieu2024   # IE username (part of the IE email before @)
+prefix: rjpenning-ieu2024    # the username with dots replaced by hyphens; starts every Azure name
+
+# Live HTTPS URL of the UI (storage static-website endpoint). PLACEHOLDER until infra/setup.sh runs:
+# the real value is https://rjpenningieu2024ui.z<N>.web.core.windows.net/, Azure picks the zone N.
+public_url: https://rjpenningieu2024ui.placeholder.web.core.windows.net/
+
+ui:
+  path: ui/
+  storage_account: rjpenningieu2024ui  # prefix without hyphens + "ui"
+  calls: [property, tasks]        # both called from the browser, base URLs from ui/config.js
+
+azure:
+  # Ruben's own Azure for Students resource group (no course service principal, see ADR-8)
+  resource_group: rjpenning-ieu2024-rg
+  container_apps_environment: rjpenning-ieu2024-env
+  sql_server: rjpenning-ieu2024-sql  # one logical server, one serverless database per service
+  registry: ghcr.io/geulo         # images tagged with the git SHA by CI
+
+services:
+  # Users and properties (ADR-2). Issues the login token.
+  property:
+    description: Users and properties; issues the login token that both services accept.
+    path: services/property/
+    openapi: services/property/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/property/migrations/
+    env:
+      PORT:
+        description: Port the Flask app listens on.
+        default: 8000
+      DATABASE_URL:
+        description: "SQL Server connection URL of this service's own database: mssql://user:password@host:1433/database."
+        secret: true
+      SECRET_KEY:
+        description: Signs login tokens. Must be the same in property and tasks.
+        secret: true
+      CORS_ORIGIN:
+        description: The only browser origin allowed to call the service (the UI).
+        default: http://localhost:8080
+      GIT_SHA:
+        description: Commit of the running image, reported as version by /health.
+        default: dev
+      DB_CONNECT_ATTEMPTS:
+        description: Connection attempts (with backoff) before giving up, covers SQL Server start-up and serverless resume.
+        default: 8
+      FLASK_DEBUG:
+        description: "1 turns on Flask debug mode (local development only)."
+        default: "0"
+    azure:
+      container_app: rjpenning-ieu2024-property
+      sql_database: rjpenning-ieu2024-property-db
+
+  # Maintenance tasks (ADR-2). Checks tokens itself, so it works while property is down.
+  tasks:
+    description: Maintenance tasks of a property; checks with property over HTTP when a task is added.
+    path: services/tasks/
+    openapi: services/tasks/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/tasks/migrations/
+    env:
+      PORT:
+        description: Port the Flask app listens on.
+        default: 8000
+      DATABASE_URL:
+        description: "SQL Server connection URL of this service's own database: mssql://user:password@host:1433/database."
+        secret: true
+      SECRET_KEY:
+        description: Checks login tokens issued by property. Must be the same in property and tasks.
+        secret: true
+      CORS_ORIGIN:
+        description: The only browser origin allowed to call the service (the UI).
+        default: http://localhost:8080
+      GIT_SHA:
+        description: Commit of the running image, reported as version by /health.
+        default: dev
+      DB_CONNECT_ATTEMPTS:
+        description: Connection attempts (with backoff) before giving up, covers SQL Server start-up and serverless resume.
+        default: 8
+      FLASK_DEBUG:
+        description: "1 turns on Flask debug mode (local development only)."
+        default: "0"
+      PROPERTY_URL:
+        description: Base URL of the property service.
+        default: http://property:8000
+      PROPERTY_TIMEOUT_S:
+        description: Timeout in seconds of every call to the property service.
+        default: 2
+    # The one flow that crosses the seam (src/property_client.py)
+    calls:
+      - service: property
+        url_env: PROPERTY_URL
+        endpoints: ["GET /properties/{property_id}"]
+        timeout_s: 2
+        on_failure: "Adding a task returns 503 'Property service unavailable'; listing, updating and deleting tasks keep working."
+    azure:
+      container_app: rjpenning-ieu2024-tasks
+      sql_database: rjpenning-ieu2024-tasks-db
