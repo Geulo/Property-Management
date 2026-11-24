@@ -4,6 +4,7 @@ import pytest
 
 from app import create_app
 from conftest import TEST_DATABASE_URL
+from src.database import Database
 
 
 @pytest.fixture
@@ -57,3 +58,13 @@ def test_property_flow(client):
 
     assert client.delete(f"/properties/{property_id}", headers=headers).status_code == 204
     assert client.get(f"/properties/{property_id}", headers=headers).status_code == 404
+
+
+def test_health_is_503_without_its_database(client, monkeypatch):
+    def unreachable(*args, **kwargs):
+        raise ConnectionError("database down")
+
+    monkeypatch.setattr(Database, "connect", unreachable)
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert response.get_json()["db"] == "error"

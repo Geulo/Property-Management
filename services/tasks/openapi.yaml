@@ -88,6 +88,17 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      summary: Delete all of the user's tasks of one property
+      description: |
+        Called by the UI just before it deletes the property in the property service, because the
+        two databases can't cascade a delete across the seam. If this call fails (tasks down), the
+        UI does not delete the property, so no tasks are left behind. 204 also when there were none.
+      operationId: deletePropertyTasks
+      responses:
+        "204":
+          description: Deleted (or there were none), no body
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /properties/{property_id}/tasks/{task_id}:
     parameters:

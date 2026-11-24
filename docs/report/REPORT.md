@@ -49,8 +49,9 @@ writes its `config.js` with both services' URLs.
 ![Database per service](4-databases.png)
 
 The foreign key from `tasks.property_id` to `properties` could not survive the split, because the tables are
-now in different databases. Adding a task checks the property over HTTP instead; deleting a property leaves
-its tasks unreachable rather than deleted (ADR-7).
+now in different databases. Adding a task checks the property over HTTP instead. Deleting a property can't
+cascade either, so the UI deletes the property's tasks first and only then the property; if tasks is down, the
+property is kept and nothing is left behind (ADR-7).
 
 ## 4. Migration evidence on Azure
 
