@@ -4,16 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Account</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
     <div class="login-container">
         <h1>Create Account</h1>
-        {% if error %}
-        <p class="error-message">{{ error }}</p>
-        {% endif %}
-        <form method="POST" action="/signup">
+        <p class="error-message" id="error" hidden></p>
+        <form id="signup-form">
 
             <input
                 type="text"
@@ -43,10 +41,31 @@
         </form>
 
         <div class="signup-hyperlink">
-            <a href="/login">Already have an account? Sign In</a>
+            <a href="login.html">Already have an account? Sign In</a>
         </div>
 
     </div>
 
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+    <script>
+        const form = document.getElementById("signup-form");
+        const error = document.getElementById("error");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            try {
+                await api(PROPERTY_URL, "/signup", "POST", {
+                    username: form.username.value,
+                    email: form.email.value,
+                    password: form.password.value,
+                });
+                // signing up does not log in, as in Assignment 1: go to the login page
+                window.location.href = "login.html";
+            } catch (err) {
+                showError(error, err.message);
+            }
+        });
+    </script>
 </body>
 </html>

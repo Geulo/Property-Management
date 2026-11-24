@@ -3,8 +3,8 @@ import os
 from flask import Flask, jsonify
 
 from src.database import Database
+from src.migrations import apply_migrations, check_database
 from src.observability import register_cors, register_request_logging
-from src.schema import check_database, create_schema
 from src.task import task_bp
 
 
@@ -36,9 +36,9 @@ def create_app():
         }
         return jsonify(body), 200 if db_ok else 503
 
-    # tables are created on startup, so compose up just works (migrations come later)
+    # pending migrations run before the service takes requests; a failed one stops the start
     connection = Database.connect()
-    create_schema(connection)
+    apply_migrations(connection)
     connection.close()
 
     return app

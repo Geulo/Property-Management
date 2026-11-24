@@ -4,41 +4,76 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Properties</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body class="page">
     <header class="top-bar">
         <h1>My Properties</h1>
-        <a href="/logout">Log out</a>
+        <a href="login.html" onclick="logOut()">Log out</a>
     </header>
 
-    {% if error %}
-    <p class="error-message">{{ error }}</p>
-    {% endif %}
+    <p class="error-message" id="error" hidden></p>
 
-    <div class="grid-container">
-        {% for property in properties %}
-            <a href="{{ url_for('task_bp.property_tasks', property_id=property['property_id']) }}" class="card-link">
-                <div class="property-card">
-                    <div class="info-pad">
-                        <h3 class="name">{{ property['property_name'] }}</h3>
-                        <p class="address">{{ property['address'] }}</p>
-                    </div>
-                </div>
-            </a>
-        {% else %}
-            <!-- shown when the user has no properties yet -->
-            <p>You haven't added any properties yet. Add your first one below.</p>
-        {% endfor %}
-    </div>
+    <div class="grid-container" id="properties"></div>
 
     <section class="panel">
         <h3>Add a Property</h3>
-        <form method="POST" action="/properties">
+        <form id="add-form">
             <input type="text" name="property_name" placeholder="Property Name" maxlength="50" required>
             <input type="text" name="address" placeholder="Address" required>
             <button type="submit">Add Property</button>
         </form>
     </section>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+    <script>
+        requireLogin();
+
+        const list = document.getElementById("properties");
+        const form = document.getElementById("add-form");
+        const error = document.getElementById("error");
+
+        // one clickable card per property, linking to its page
+        function renderProperty(property) {
+            const link = el("a", "card-link");
+            link.href = "property.html?id=" + property.property_id;
+            const card = el("div", "property-card");
+            const pad = el("div", "info-pad");
+            pad.append(el("h3", "name", property.property_name), el("p", "address", property.address));
+            card.append(pad);
+            link.append(card);
+            return link;
+        }
+
+        async function loadProperties() {
+            try {
+                const data = await api(PROPERTY_URL, "/properties");
+                list.replaceChildren(...data.properties.map(renderProperty));
+                if (data.properties.length === 0) {
+                    list.append(el("p", "", "You haven't added any properties yet. Add your first one below."));
+                }
+            } catch (err) {
+                showError(error, "Could not load your properties (" + err.message + ").");
+            }
+        }
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            try {
+                await api(PROPERTY_URL, "/properties", "POST", {
+                    property_name: form.property_name.value,
+                    address: form.address.value,
+                });
+                form.reset();
+                showError(error, "");
+                loadProperties();
+            } catch (err) {
+                showError(error, err.message);
+            }
+        });
+
+        loadProperties();
+    </script>
 </body>
 </html>
