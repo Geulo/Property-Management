@@ -1,0 +1,234 @@
+# OpenAPI description of the property service (users + properties).
+# Written from the code in app.py, src/user.py and src/property.py; keep them in step.
+# CI validates this file against the OpenAPI 3.1 spec (.github/workflows/contracts.yml).
+openapi: 3.1.0
+
+info:
+  title: Property service
+  version: 1.0.0
+  description: |
+    Owns users and properties (ADR-2). Issues the login token that both services accept.
+    Every route except /signup, /login and /health needs `Authorization: Bearer <token>`
+    and answers 401 without a valid one. A user only ever sees their own properties.
+
+servers:
+  - url: http://localhost:8001
+    description: docker compose (container port 8000)
+
+# Default for every operation; /signup, /login and /health override it with `security: []`
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Can this service read and write its own database?
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Database read and write both work
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Database unreachable or not writable (status and db are "error")
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /signup:
+    post:
+      summary: Create a user
+      operationId: signup
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignupRequest" }
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id]
+                properties:
+                  user_id: { type: integer }
+        "400":
+          description: Missing field, password shorter than 8 characters, or email already registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /login:
+    post:
+      summary: Log in and get a bearer token (valid 8 hours)
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401":
+          description: Invalid email or password
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /properties:
+    get:
+      summary: List the user's properties, sorted by name
+      operationId: listProperties
+      responses:
+        "200":
+          description: The user's properties
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [properties]
+                properties:
+                  properties:
+                    type: array
+                    items: { $ref: "#/components/schemas/Property" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      summary: Add a property
+      operationId: createProperty
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PropertyCreate" }
+      responses:
+        "201":
+          description: Property created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Property" }
+        "400":
+          description: Name or address missing, or name longer than 50 characters
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /properties/{property_id}:
+    parameters:
+      - $ref: "#/components/parameters/PropertyId"
+    get:
+      summary: One property of the user
+      description: |
+        The endpoint the tasks service calls across the seam before it adds a task
+        (tasks/src/property_client.py). It forwards the user's Authorization header;
+        200 means the property exists and is the user's, 404 means it is not.
+      operationId: getProperty
+      responses:
+        "200":
+          description: The property
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Property" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/PropertyNotFound" }
+    delete:
+      summary: Delete a property (its tasks in the tasks service are left as they are)
+      operationId: deleteProperty
+      responses:
+        "204":
+          description: Deleted, no body
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/PropertyNotFound" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      # not a JWT: the user id signed with SECRET_KEY by itsdangerous (src/auth.py)
+      bearerFormat: itsdangerous signed token
+
+  parameters:
+    PropertyId:
+      name: property_id
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: No token, or a forged or expired one ("Log in first")
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PropertyNotFound:
+      description: No such property, or it belongs to another user ("Property not found")
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: Human-readable message the UI shows }
+
+    Health:
+      type: object
+      required: [status, db, version]
+      properties:
+        status: { type: string, enum: [ok, error] }
+        db: { type: string, enum: [ok, error] }
+        version: { type: string, description: "Git SHA of the deployed image (GIT_SHA), \"dev\" locally" }
+
+    SignupRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username: { type: string }
+        email: { type: string, format: email, description: Stored lower case, must be unique }
+        password: { type: string, minLength: 8 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    LoginResponse:
+      type: object
+      required: [token, user_id, username]
+      properties:
+        token: { type: string, description: "Send as Authorization: Bearer <token> to both services" }
+        user_id: { type: integer }
+        username: { type: string }
+
+    PropertyCreate:
+      type: object
+      required: [property_name, address]
+      properties:
+        property_name: { type: string, maxLength: 50 }
+        address: { type: string, maxLength: 255 }
+
+    # One row of the properties table. New columns (migrations) are added here;
+    # clients ignore fields they do not know, so adding one does not break tasks.
+    Property:
+      type: object
+      required: [property_id, property_name, address, user_id]
+      properties:
+        property_id: { type: integer }
+        property_name: { type: string, maxLength: 50 }
+        address: { type: string, maxLength: 255 }
+        user_id: { type: integer, description: Owner }

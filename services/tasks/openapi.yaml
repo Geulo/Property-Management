@@ -1,0 +1,232 @@
+# OpenAPI description of the tasks service (maintenance tasks of a property).
+# Written from the code in app.py and src/task.py; keep them in step.
+# CI validates this file against the OpenAPI 3.1 spec (.github/workflows/contracts.yml).
+openapi: 3.1.0
+
+info:
+  title: Tasks service
+  version: 1.0.0
+  description: |
+    Owns maintenance tasks (ADR-2). Checks the login token itself (shared SECRET_KEY),
+    so it keeps serving tasks while the property service is down.
+    Adding a task is the one flow that crosses the seam: it first calls
+    GET {PROPERTY_URL}/properties/{property_id} on the property service (timeout PROPERTY_TIMEOUT_S).
+    Every route except /health needs `Authorization: Bearer <token>` and answers 401 without a valid one.
+
+servers:
+  - url: http://localhost:8002
+    description: docker compose (container port 8000)
+
+# Default for every operation; /health overrides it with `security: []`
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Can this service read and write its own database? (never checks property)
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Database read and write both work
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Database unreachable or not writable (status and db are "error")
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /properties/{property_id}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/PropertyId"
+    get:
+      summary: List the tasks of one property, with counts per status
+      description: |
+        Served from this service's own database only, so it works while property is down.
+        Order: open tasks first, then urgent > normal > low, newest first.
+        An unknown property simply has no tasks (200 with an empty list, not 404).
+      operationId: listTasks
+      responses:
+        "200":
+          description: The property's tasks
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      summary: Add a task (checks the property with the property service first)
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskCreate" }
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400":
+          description: Name missing or longer than 80 characters, or unknown priority
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: The property service says the property does not exist or is not the user's
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: |
+            Property service unreachable, slower than PROPERTY_TIMEOUT_S, or answered anything
+            other than 200/404. Message: "Property service unavailable, try adding the task again later".
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /properties/{property_id}/tasks/{task_id}:
+    parameters:
+      - $ref: "#/components/parameters/PropertyId"
+      - name: task_id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      summary: Move a task to another status
+      description: Allowed moves are pending -> in_progress|done, in_progress -> pending|done, done -> pending.
+      operationId: updateTaskStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: "#/components/schemas/Status" }
+      responses:
+        "204":
+          description: Status changed, no body
+        "400":
+          description: Unknown status, or a move that is not allowed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/TaskNotFound" }
+    delete:
+      summary: Delete a task
+      operationId: deleteTask
+      responses:
+        "204":
+          description: Deleted, no body
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/TaskNotFound" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      # issued by the property service's POST /login; not a JWT (itsdangerous, src/auth.py)
+      bearerFormat: itsdangerous signed token
+
+  parameters:
+    PropertyId:
+      name: property_id
+      in: path
+      required: true
+      description: Id of a property in the property service (no foreign key across the seam)
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: No token, or a forged or expired one ("Log in first")
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TaskNotFound:
+      description: No such task on this property for this user ("Task not found")
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: Human-readable message the UI shows }
+
+    Health:
+      type: object
+      required: [status, db, version]
+      properties:
+        status: { type: string, enum: [ok, error] }
+        db: { type: string, enum: [ok, error] }
+        version: { type: string, description: "Git SHA of the deployed image (GIT_SHA), \"dev\" locally" }
+
+    Status:
+      type: string
+      enum: [pending, in_progress, done]
+
+    Priority:
+      type: string
+      enum: [low, normal, urgent]
+
+    TaskCreate:
+      type: object
+      required: [task_name]
+      properties:
+        task_name: { type: string, maxLength: 80 }
+        description: { type: string, maxLength: 1000, default: "" }
+        priority: { $ref: "#/components/schemas/Priority", default: normal }
+
+    # One row of the tasks table. New columns (migrations) are added here;
+    # the UI ignores fields it does not know.
+    Task:
+      type: object
+      required: [task_id, task_name, description, status, priority, property_id]
+      properties:
+        task_id: { type: integer }
+        task_name: { type: string, maxLength: 80 }
+        description: { type: [string, "null"], maxLength: 1000 }
+        status: { $ref: "#/components/schemas/Status" }
+        priority: { $ref: "#/components/schemas/Priority" }
+        property_id: { type: integer }
+
+    # A task in the list also says which statuses it may move to next
+    TaskInList:
+      allOf:
+        - $ref: "#/components/schemas/Task"
+        - type: object
+          required: [next_statuses]
+          properties:
+            next_statuses:
+              type: array
+              items: { $ref: "#/components/schemas/Status" }
+
+    TaskList:
+      type: object
+      required: [tasks, summary, priorities]
+      properties:
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/TaskInList" }
+        summary:
+          type: object
+          required: [pending, in_progress, done, urgent_open]
+          properties:
+            pending: { type: integer }
+            in_progress: { type: integer }
+            done: { type: integer }
+            urgent_open: { type: integer, description: Urgent tasks not done yet }
+        priorities:
+          type: array
+          description: The priorities the UI may offer, lowest first
+          items: { $ref: "#/components/schemas/Priority" }
