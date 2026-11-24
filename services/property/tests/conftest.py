@@ -4,7 +4,7 @@ import pymssql
 import pytest
 
 from src.database import Database, parse_database_url
-from src.schema import create_schema
+from src.migrations import apply_migrations
 from src.user import create_user
 
 # Tests that touch the database need a SQL Server, e.g. the one from docker compose:
@@ -27,7 +27,7 @@ def connection():
         pytest.skip("needs SQL Server: set TEST_DATABASE_URL")
     ensure_database(TEST_DATABASE_URL)
     connection = Database.connect(TEST_DATABASE_URL, attempts=1)
-    create_schema(connection)
+    apply_migrations(connection)
     # empty tables per test, so every test starts from the same state
     cursor = connection.cursor()
     cursor.execute("DELETE FROM properties")

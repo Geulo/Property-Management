@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Only what the service needs to run: no tests, no .env, no .git (see .dockerignore)
 COPY app.py ./
 COPY src/ ./src/
+COPY migrations/ ./migrations/
 
 USER appuser
 
