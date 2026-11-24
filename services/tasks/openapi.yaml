@@ -191,7 +191,7 @@ components:
     # the UI ignores fields it does not know.
     Task:
       type: object
-      required: [task_id, task_name, description, status, priority, property_id]
+      required: [task_id, task_name, description, status, priority, property_id, updated_at]
       properties:
         task_id: { type: integer }
         task_name: { type: string, maxLength: 80 }
@@ -199,6 +199,8 @@ components:
         status: { $ref: "#/components/schemas/Status" }
         priority: { $ref: "#/components/schemas/Priority" }
         property_id: { type: integer }
+        # added by migration 002: when the task was created or last changed status (UTC)
+        updated_at: { type: string, format: date-time }
 
     # A task in the list also says which statuses it may move to next
     TaskInList:

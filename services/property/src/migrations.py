@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 # Versioned migrations: every file in migrations/ (001_init.sql, 002_...) runs once, in order of
@@ -7,6 +8,11 @@ from pathlib import Path
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
 log = logging.getLogger("service")
+
+# A line holding only GO ends a batch, as in sqlcmd and SSMS. SQL Server compiles a whole batch
+# before running it, so a statement that uses a column added earlier in the file must be in a
+# later batch.
+BATCH_SEPARATOR = re.compile(r"^\s*GO\s*$", re.IGNORECASE | re.MULTILINE)
 
 
 def applied_versions(connection):
@@ -38,7 +44,9 @@ def apply_migrations(connection, migrations_dir=MIGRATIONS_DIR):
         try:
             # the file and its record commit together: a failed migration leaves no record and
             # no half-applied change, and the service refuses to start until it is fixed
-            cursor.execute(path.read_text())
+            for batch in BATCH_SEPARATOR.split(path.read_text()):
+                if batch.strip():
+                    cursor.execute(batch)
             cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.name,))
             connection.commit()
         except Exception:
