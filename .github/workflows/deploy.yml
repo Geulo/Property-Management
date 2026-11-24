@@ -8,6 +8,9 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  # TEMPORARY (removed before merge): test this workflow from its branch, deploying main's images
+  push:
+    branches: [claude/a2-azure-deploy-d6f6af]
 
 permissions:
   id-token: write   # lets azure/login get a GitHub OIDC token, so no Azure password is stored
@@ -20,7 +23,7 @@ concurrency:
 
 env:
   # The commit CI tested and built images for (not "the latest").
-  GIT_SHA: ${{ github.event.workflow_run.head_sha }}
+  GIT_SHA: ${{ github.event.workflow_run.head_sha || 'a7af458c5b79d78ef5032a2a4091043e69672228' }}  # TEMPORARY fallback
   # Resource names, created by infra/setup.sh (not secrets).
   RESOURCE_GROUP: rjpenning-ieu2024-rg
   CONTAINERAPPS_ENV: rjpenning-ieu2024-env
@@ -32,7 +35,7 @@ env:
 jobs:
   deploy:
     # Only a successful CI run from a push to main (not a pull request whose branch is called main).
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    if: github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')  # TEMPORARY
     runs-on: ubuntu-latest
     steps:
       # Check out the same commit, so the UI files match the deployed services.
