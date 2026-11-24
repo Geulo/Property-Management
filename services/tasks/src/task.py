@@ -20,7 +20,7 @@ ALLOWED_TRANSITIONS = {
 
 MAX_TASK_NAME_LENGTH = 80
 
-COLUMNS = "task_id, task_name, description, status, priority, property_id"
+COLUMNS = "task_id, task_name, description, status, priority, property_id, updated_at"
 
 
 # ---- logic (no Flask, takes a connection so it can be unit tested) ----
@@ -83,7 +83,11 @@ def update_status(connection, user_id, property_id, task_id, new_status):
     if not can_transition(task["status"], new_status):
         raise ValueError(f"Cannot move task from {task['status']} to {new_status}")
 
-    execute(connection, "UPDATE tasks SET status = %s WHERE task_id = %s", (new_status, task_id))
+    execute(
+        connection,
+        "UPDATE tasks SET status = %s, updated_at = SYSUTCDATETIME() WHERE task_id = %s",
+        (new_status, task_id),
+    )
 
 
 def delete_task(connection, user_id, property_id, task_id):
@@ -92,6 +96,11 @@ def delete_task(connection, user_id, property_id, task_id):
         "DELETE FROM tasks WHERE task_id = %s AND property_id = %s AND user_id = %s",
         (task_id, property_id, user_id),
     ) == 1
+
+
+def to_json(task):
+    # datetime -> ISO 8601 text, which JSON (and the UI) can read
+    return {**task, "updated_at": task["updated_at"].isoformat()}
 
 
 def summarize(tasks):
@@ -115,9 +124,8 @@ def property_tasks(property_id):
     tasks = list_tasks(connection, g.user_id, property_id)
     connection.close()
 
-    for task in tasks:
-        task["next_statuses"] = list(ALLOWED_TRANSITIONS[task["status"]])
-    return jsonify(tasks=tasks, summary=summarize(tasks), priorities=list(PRIORITIES))
+    listed = [{**to_json(task), "next_statuses": list(ALLOWED_TRANSITIONS[task["status"]])} for task in tasks]
+    return jsonify(tasks=listed, summary=summarize(tasks), priorities=list(PRIORITIES))
 
 
 @task_bp.route("/properties/<int:property_id>/tasks", methods=["POST"])
@@ -148,7 +156,7 @@ def create_task(property_id):
     finally:
         connection.close()
 
-    return jsonify(created), 201
+    return jsonify(to_json(created)), 201
 
 
 @task_bp.route("/properties/<int:property_id>/tasks/<int:task_id>", methods=["PATCH"])

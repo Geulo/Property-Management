@@ -37,3 +37,38 @@ def test_failed_migration_is_not_recorded(connection, scratch_versions, tmp_path
     with pytest.raises(Exception):
         apply_migrations(connection, tmp_path)
     assert "903_broken.sql" not in recorded(connection)
+
+
+def test_002_keeps_existing_tasks_and_backfills_them(connection, tmp_path):
+    # Replays 001 then 002 on an empty database, with a task inserted in between: the same
+    # order as on Azure, where tasks existed before 002 was deployed.
+    from conftest import TEST_DATABASE_URL, ensure_database
+    from src.database import Database, fetch_one
+    from src.migrations import MIGRATIONS_DIR
+
+    url = TEST_DATABASE_URL.rsplit("/", 1)[0] + "/tasks_migration_test"
+    ensure_database(url)
+    fresh = Database.connect(url, attempts=1)
+    cursor = fresh.cursor()
+    cursor.execute("IF OBJECT_ID('tasks', 'U') IS NOT NULL DROP TABLE tasks")
+    cursor.execute("IF OBJECT_ID('health_probe', 'U') IS NOT NULL DROP TABLE health_probe")
+    cursor.execute("IF OBJECT_ID('schema_migrations', 'U') IS NOT NULL DROP TABLE schema_migrations")
+    fresh.commit()
+
+    first = tmp_path / "001_init.sql"
+    first.write_text((MIGRATIONS_DIR / "001_init.sql").read_text())
+    apply_migrations(fresh, tmp_path)
+    cursor.execute(
+        "INSERT INTO tasks (task_name, priority, property_id, user_id, created_at) "
+        "VALUES ('Fix boiler', 'urgent', 10, 1, '2026-11-01T09:00:00')"
+    )
+    fresh.commit()
+
+    second = tmp_path / "002_add_task_updated_at.sql"
+    second.write_text((MIGRATIONS_DIR / "002_add_task_updated_at.sql").read_text())
+    assert apply_migrations(fresh, tmp_path) == ["002_add_task_updated_at.sql"]
+
+    task = fetch_one(fresh, "SELECT task_name, priority, created_at, updated_at FROM tasks")
+    assert task["task_name"] == "Fix boiler" and task["priority"] == "urgent"
+    assert task["updated_at"] == task["created_at"]
+    fresh.close()

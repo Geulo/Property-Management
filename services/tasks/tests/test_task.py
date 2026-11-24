@@ -114,3 +114,10 @@ def test_summarize():
 
 def test_summarize_empty():
     assert summarize([]) == {"pending": 0, "in_progress": 0, "done": 0, "urgent_open": 0}
+
+
+def test_status_change_moves_updated_at(connection, user_id, property_id):
+    task_id = add_task(connection, user_id, property_id, "Fix tap")
+    before = get_task(connection, user_id, property_id, task_id)["updated_at"]
+    update_status(connection, user_id, property_id, task_id, "done")
+    assert get_task(connection, user_id, property_id, task_id)["updated_at"] >= before
